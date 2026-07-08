@@ -88,9 +88,10 @@ cp .env.example .env
 pnpm install
 ```
 
-Aplicar la estructura de la base de datos:
+Aplicar la estructura de la base de datos y generar el cliente Prisma:
 ```bash
 pnpm prisma migrate deploy
+pnpm prisma generate
 ```
 
 Cargar datos de prueba (usuarios, productos, stock inicial):
