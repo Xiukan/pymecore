@@ -1,0 +1,131 @@
+@startuml PYMECORE_DER
+
+skinparam linetype ortho
+skinparam entityBackgroundColor #f0f4ff
+skinparam entityBorderColor #3182ce
+skinparam arrowColor #3182ce
+
+entity Sucursal {
+  * id
+  --
+  nombre
+  direccion
+}
+
+entity Usuario {
+  * id
+  --
+  nombre_completo
+  username
+  rol (Administrador / Encargado / Vendedor)
+  estado (Activo / Inactivo)
+}
+
+entity Entidad {
+  * id
+  --
+  rut
+  nombre_razon_social
+  tipo (CLIENTE / PROVEEDOR)
+  telefono
+  email
+}
+
+entity Item {
+  * id
+  --
+  codigo_sku
+  nombre
+  unidad_medida
+  precio_venta
+  costo_promedio
+  precio_compra
+  afecto_iva
+}
+
+entity StockLocal {
+  * id
+  --
+  stock_actual
+  stock_minimo
+}
+
+entity Oferta {
+  * id
+  --
+  precio_oferta
+  descripcion
+  fecha_inicio
+  fecha_fin
+  activo
+}
+
+entity Transaccion {
+  * id
+  --
+  tipo (VENTA / COMPRA / MERMA\nDEVOLUCION / NOTA_CREDITO)
+  medio_pago
+  monto_total
+  numero_factura
+  fecha_registro
+  estado
+}
+
+entity TransaccionDetalle {
+  * id
+  --
+  cantidad
+  precio_unitario
+  monto_iva
+  subtotal
+}
+
+entity GuiaDespacho {
+  * id
+  --
+  folio
+  estado (PENDIENTE / EN_TRANSITO\nRECIBIDO / ANULADO)
+  fecha_emision
+  fecha_recepcion
+  notas
+}
+
+entity GuiaDespachoDetalle {
+  * id
+  --
+  cantidad
+}
+
+entity GastoOperacional {
+  * id
+  --
+  descripcion
+  categoria
+  monto
+  fecha_registro
+}
+
+' Relaciones
+Sucursal ||--o{ Usuario : "tiene"
+Sucursal ||--o{ StockLocal : "almacena"
+Sucursal ||--o{ Transaccion : "registra"
+Sucursal ||--o{ GuiaDespacho : "origen"
+Sucursal ||--o{ GuiaDespacho : "destino"
+
+Usuario ||--o{ Transaccion : "realiza"
+Usuario ||--o{ GuiaDespacho : "emite"
+Usuario ||--o{ GastoOperacional : "registra"
+
+Entidad |o--o{ Transaccion : "participa en"
+
+Item ||--o{ StockLocal : "tiene stock en"
+Item ||--o{ Oferta : "tiene"
+Item ||--o{ TransaccionDetalle : "incluido en"
+Item ||--o{ GuiaDespachoDetalle : "incluido en"
+
+Transaccion ||--o{ TransaccionDetalle : "contiene"
+Transaccion |o--o{ Transaccion : "origen de devolucion"
+
+GuiaDespacho ||--o{ GuiaDespachoDetalle : "contiene"
+
+@enduml

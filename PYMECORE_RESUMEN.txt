@@ -1,0 +1,376 @@
+================================================================
+PYMECORE — SISTEMA ERP PARA PYMES
+Proyecto Universidad de Chile Maule (UCM)
+Asignatura: Ingeniería de Software II
+================================================================
+
+DESCRIPCIÓN GENERAL
+-------------------
+PYMECORE es un sistema ERP (Enterprise Resource Planning) orientado a
+pequeñas y medianas empresas chilenas. Permite gestionar ventas, inventario,
+clientes, usuarios, documentos tributarios electrónicos (DTE) y operaciones
+entre sucursales desde una interfaz web moderna.
+
+El sistema fue diseñado tomando como referencia un ERP previo desarrollado
+en PHP, reescribiendo toda la arquitectura con tecnologías modernas y
+agregando funcionalidades adicionales como emisión real de DTE según el
+estándar del Servicio de Impuestos Internos (SII) de Chile.
+
+
+================================================================
+STACK TECNOLÓGICO
+================================================================
+
+BACKEND
+-------
+- Runtime:       Node.js
+- Framework:     NestJS 11 (arquitectura modular, decoradores, guards)
+- ORM:           Prisma 7 con adaptador @prisma/adapter-pg
+- Base de datos: PostgreSQL 16 (Docker, puerto 5433)
+- Autenticación: JWT con guards globales (JwtAuthGuard + RolesGuard)
+- Validación:    class-validator / class-transformer
+- Gestor paquetes: pnpm
+- DTE/SII:       node-forge (P12), xml-crypto (XMLDSig), crypto nativo (SHA1)
+- Documentación: Swagger/OpenAPI en /api/docs
+
+FRONTEND
+--------
+- Framework:   React 19 + Vite
+- Lenguaje:    TypeScript
+- Estilos:     Tailwind CSS v4 (@tailwindcss/vite)
+- Routing:     React Router v6
+- HTTP:        Axios con interceptores (Bearer token + redirect 401)
+- PDF:         jsPDF (generación de boletas y guías en el navegador)
+- Gestor paquetes: pnpm
+
+INFRAESTRUCTURA
+---------------
+- PostgreSQL corre en Docker (puerto 5433, usuario erp_user, base erp_db)
+- Backend expuesto en http://localhost:3000
+- Frontend expuesto en http://localhost:5173
+
+
+================================================================
+ARQUITECTURA DEL BACKEND
+================================================================
+
+El backend sigue la arquitectura modular de NestJS. Cada dominio tiene
+su propio módulo con Controller, Service y DTOs.
+
+MÓDULOS
+-------
+auth              Autenticación JWT. Login devuelve accessToken + datos
+                  del usuario (id, rol, sucursalId). Guards globales
+                  protegen todos los endpoints automáticamente.
+
+usuarios          CRUD de usuarios del sistema. Solo Administradores
+                  pueden crear, editar y desactivar usuarios. Passwords
+                  guardados con bcrypt.
+
+sucursales        CRUD de sucursales de la empresa.
+
+items             Catálogo de productos. Cada producto tiene SKU único,
+                  precio de venta, costo promedio, precio de compra,
+                  unidad de medida y flag de afecto a IVA.
+
+stock             Stock por sucursal (tabla stock_local). Permite
+                  registrar stock inicial y ajustes manuales. Las ventas
+                  y mermas descuentan stock atómicamente via transacción
+                  de base de datos.
+
+ofertas           Precios especiales por producto con fecha de inicio y
+                  fecha de fin. El POS consulta las ofertas vigentes al
+                  cargar y las aplica automáticamente.
+
+entidades         Clientes y proveedores. Búsqueda por RUT disponible
+                  para el flujo de registro rápido desde el POS.
+
+transactions      Núcleo del sistema. Registra ventas, compras, mermas,
+                  devoluciones y notas de crédito. Cada tipo modifica el
+                  stock de forma diferente:
+                  - VENTA / MERMA: descuenta stock
+                  - DEVOLUCION / NOTA_CREDITO: repone stock
+                  Las ventas emiten DTE automáticamente via SII.
+
+guias-despacho    Traslado de mercadería entre sucursales. Al crear una
+                  guía se descuenta stock del origen. Al marcarla como
+                  recibida se acredita stock en el destino. Se puede
+                  anular (revierte el stock).
+
+sii               Integración con el SII de Chile. Genera DTE reales:
+                  - TED (Timbre Electrónico) firmado con SHA1withRSA
+                    usando la llave privada del CAF.
+                  - XML DTE firmado con XMLDSig usando certificado P12.
+                  Soporta Boleta Electrónica (39) y Factura (33).
+                  Si falla, genera un XML de respaldo (mock).
+
+SEGURIDAD
+---------
+Todos los endpoints requieren JWT válido. El guard de roles verifica
+que el usuario tenga el rol necesario para cada operación. El guard de
+sucursal verifica que el usuario solo acceda a datos de su sucursal
+(excepto Administradores, que ven todo).
+
+
+================================================================
+ARQUITECTURA DEL FRONTEND
+================================================================
+
+La aplicación es un SPA (Single Page Application) con rutas protegidas.
+
+ESTRUCTURA DE RUTAS
+-------------------
+/login              Pantalla de inicio de sesión
+/                   Dashboard con resumen del negocio
+/ventas             Punto de venta (POS)
+/inventario         Gestión de stock por sucursal
+/historial          Historial detallado de ventas y documentos
+/mermas             Registro de productos dañados o vencidos
+/devoluciones       Cambios y devoluciones de productos
+/precios            Lista de precios y gestión de ofertas
+/despachos          Guías de despacho entre sucursales
+/documentos         Consulta unificada de todos los documentos
+/clientes           CRUD de clientes y proveedores
+/usuarios           CRUD de usuarios (solo Administrador)
+
+CONTEXTO DE AUTENTICACIÓN
+--------------------------
+AuthContext almacena el token JWT y los datos del usuario en
+localStorage. Un interceptor de Axios adjunta el token en cada
+petición. Si el servidor devuelve 401, redirige automáticamente
+al login.
+
+INDICADOR ONLINE/OFFLINE
+-------------------------
+Hook useOnlineStatus() escucha los eventos online/offline del
+navegador y muestra un indicador visual (punto verde/rojo) en la
+barra lateral de navegación.
+
+
+================================================================
+MÓDULOS DEL SISTEMA — DETALLE FUNCIONAL
+================================================================
+
+1. PUNTO DE VENTA (POS)
+-----------------------
+Interfaz de dos paneles: grilla de productos a la izquierda y
+carrito de compra a la derecha.
+
+Funcionalidades:
+- Búsqueda de productos por nombre o SKU (atajo F2)
+- Tarjetas de producto con emoji automático según categoría,
+  badge de stock bajo o sin stock, y badge OFERTA con precio
+  tachado cuando hay una oferta vigente
+- Carrito con controles +/- por producto
+- Selección de tipo de documento: Boleta (39) o Factura (33)
+- Identificación del cliente por RUT:
+  * El dígito verificador se calcula automáticamente (módulo 11)
+  * Si el RUT existe en el sistema, se asocia automáticamente
+  * Si no existe, se puede registrar nombre, apellido y email
+  * Si no se quiere dar RUT, se usa el RUT por defecto 66666666-6
+- Para facturas se solicitan los datos de la empresa receptora
+- Al cobrar se emite el DTE (boleta o factura electrónica)
+- Descarga de PDF de la boleta inmediatamente tras la venta
+- Atajos de teclado: F2 (buscar), F3 (cobrar), Esc (vaciar)
+
+2. INVENTARIO
+-------------
+- Vista de stock actual por sucursal con semáforo (OK / Bajo)
+- Búsqueda por nombre o SKU
+- Selector de sucursal para Administradores
+- Crear nuevo producto: SKU, nombre, unidad, precio venta,
+  costo promedio, precio de compra (factura de compra),
+  afecto a IVA, stock inicial y stock mínimo
+- Ajuste manual de stock para productos existentes
+
+3. HISTORIAL DE VENTAS
+----------------------
+- Listado de todas las transacciones con filtros por tipo,
+  fecha y búsqueda por folio/cliente/RUT
+- Vista detallada de cada documento con sus líneas de productos
+- Descarga de PDF para boletas y facturas emitidas
+- Tipos mostrados: Venta, Compra, Merma, Devolución, Nota crédito
+
+4. MERMAS
+---------
+- Permite registrar productos dañados, vencidos o perdidos
+- Se seleccionan los productos y cantidades a dar de baja
+- Se indica el motivo (vencimiento, rotura, deterioro, etc.)
+- El stock se descuenta automáticamente al registrar
+
+5. DEVOLUCIONES Y CAMBIOS
+--------------------------
+- Se ingresa el número de folio de la boleta original
+- El sistema valida que la boleta exista y que no hayan pasado
+  más de 30 días desde la emisión
+- Se muestran los productos de la venta para seleccionar cuáles
+  se devuelven
+- Dos tipos de devolución:
+  * Cambio de producto: registra DEVOLUCION, repone stock
+  * Falla / Nota de crédito: registra NOTA_CREDITO con
+    devolución de dinero, también repone stock
+- Se descarga el PDF de la boleta original para referencia
+
+6. PRECIOS Y OFERTAS
+--------------------
+Pestaña "Lista de precios":
+- Tabla de todos los productos con precio de compra, costo
+  promedio, precio de venta y margen calculado automáticamente
+- Edición inline del precio de venta con Enter para confirmar
+- Margen en rojo si el precio de venta es menor al costo
+
+Pestaña "Ofertas":
+- Lista de ofertas con estado: Vigente, Programada o Inactiva
+- Crear oferta: producto, precio de oferta, descripción,
+  fecha de inicio y fecha de fin
+- Pausar / activar ofertas sin eliminarlas
+- El POS aplica automáticamente las ofertas vigentes
+
+7. DESPACHO ENTRE SUCURSALES
+-----------------------------
+- Solo disponible cuando hay más de una sucursal
+- Crear guía de despacho: origen, destino, productos y cantidades
+- Al crear, el stock se descuenta del origen inmediatamente
+- La sucursal destino marca la guía como "Recibida": el stock
+  se acredita en destino
+- Se puede anular una guía (devuelve stock al origen)
+- Folio secuencial automático para cada guía
+- Descarga de PDF de la guía de despacho (formato A5)
+- Estados: PENDIENTE → RECIBIDO o ANULADO
+
+8. CONSULTA DE DOCUMENTOS
+--------------------------
+- Vista unificada de todos los documentos emitidos:
+  boletas, facturas, notas de crédito, devoluciones y
+  guías de despacho
+- Filtros por tipo de documento, rango de fechas y búsqueda
+  por número, receptor o RUT
+- Descarga de PDF para cualquier documento
+
+9. CLIENTES
+-----------
+- CRUD completo de clientes y proveedores
+- Campos: RUT, razón social, teléfono, email, dirección
+- Búsqueda y filtrado por tipo (cliente/proveedor)
+
+10. USUARIOS
+------------
+- Solo visible para Administradores
+- CRUD de usuarios del sistema con asignación de rol y sucursal
+- Roles disponibles: Administrador, Encargado, Vendedor
+- Desactivación de cuentas (soft delete)
+
+11. DASHBOARD
+-------------
+- Resumen del negocio: ventas del día, ingresos, alertas de
+  stock bajo y últimas transacciones
+
+
+================================================================
+DOCUMENTOS TRIBUTARIOS ELECTRÓNICOS (DTE)
+================================================================
+
+PYMECORE implementa emisión real de DTE según el estándar del
+SII de Chile usando certificados de prueba.
+
+TIPOS SOPORTADOS
+----------------
+- Boleta Electrónica (tipo 39)
+- Factura Electrónica (tipo 33)
+- Nota de Crédito (tipo 61) — generada en devoluciones
+- Guía de Despacho (tipo 52) — generada en despachos
+
+PROCESO DE EMISIÓN
+------------------
+1. Se genera el XML del DTE con los datos del emisor, receptor
+   y detalle de productos.
+2. Se genera el TED (Timbre Electrónico del Documento):
+   - Se construye el string DD con datos clave del documento
+   - Se firma con SHA1withRSA usando la llave privada del CAF
+   - El CAF (Código de Autorización de Folios) es emitido por
+     el SII y autoriza un rango de folios
+3. El TED se incrusta en el XML del DTE.
+4. El DTE completo se firma con XMLDSig (estándar W3C):
+   - Canonicalización C14N
+   - Digest SHA1
+   - Firma RSA-SHA1 usando el certificado P12 de la empresa
+5. El XML firmado se almacena en la base de datos junto con
+   los metadatos del folio.
+
+CERTIFICADOS UTILIZADOS
+-----------------------
+- CAF_Prueba.xml: CAF de prueba del SII, RUT 99999999-9,
+  tipo documento 39, rango folios 1-500
+- mi_certificado.p12: Certificado digital de prueba,
+  password: tesis123
+
+PDF GENERADO
+------------
+Los PDFs se generan en el navegador con jsPDF, formato A5,
+incluyendo datos del emisor, receptor, detalle de productos,
+total y leyenda de documento tributario electrónico.
+
+
+================================================================
+MODELO DE DATOS — TABLAS PRINCIPALES
+================================================================
+
+sucursales          Tiendas o puntos de venta de la empresa
+usuarios            Empleados con acceso al sistema
+entidades           Clientes y proveedores
+items               Catálogo de productos
+stock_local         Stock de cada producto por sucursal
+ofertas             Precios especiales con vigencia por fecha
+transacciones       Ventas, compras, mermas, devoluciones
+transacciones_detalle Líneas de cada transacción
+guias_despacho      Traslados entre sucursales
+guias_despacho_detalle Productos de cada guía
+gastos_operacionales Registro de gastos del negocio
+
+
+================================================================
+ROLES Y PERMISOS
+================================================================
+
+Administrador   Acceso total. Puede gestionar usuarios, ver
+                todas las sucursales, crear/editar productos,
+                gestionar precios y ofertas, emitir despachos.
+
+Encargado       Puede gestionar inventario, precios, ofertas
+                y despachos. No puede gestionar usuarios.
+
+Vendedor        Puede realizar ventas en el POS, consultar
+                historial, registrar devoluciones y mermas.
+                Solo ve su sucursal asignada.
+
+
+================================================================
+CÓMO INICIAR EL SISTEMA
+================================================================
+
+BASE DE DATOS
+  docker run -d --name erp-postgres \
+    -e POSTGRES_USER=erp_user \
+    -e POSTGRES_PASSWORD=erp_pass \
+    -e POSTGRES_DB=erp_db \
+    -p 5433:5432 postgres:16
+
+BACKEND
+  cd erp-backend
+  pnpm install
+  npx prisma migrate deploy
+  node dist/src/main.js
+  (o: npx nest build && node dist/src/main.js)
+  Disponible en: http://localhost:3000
+  Swagger en:    http://localhost:3000/api/docs
+
+FRONTEND
+  cd erp-frontend
+  pnpm install
+  npx vite --port 5173
+  Disponible en: http://localhost:5173
+
+
+================================================================
+FIN DEL DOCUMENTO
+================================================================

@@ -1,0 +1,267 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum RolUsuario {
+  Administrador
+  Encargado
+  Vendedor
+}
+
+enum EstadoUsuario {
+  Activo
+  Inactivo
+}
+
+enum TipoEntidad {
+  CLIENTE
+  PROVEEDOR
+}
+
+enum EstadoGeneral {
+  Activo
+  Inactivo
+}
+
+enum TipoTransaccion {
+  VENTA
+  COMPRA
+  MERMA
+  DEVOLUCION
+  NOTA_CREDITO
+}
+
+enum MedioPago {
+  Efectivo
+  Tarjeta
+  Transferencia
+  NoAplica @map("No Aplica")
+}
+
+enum EstadoTransaccion {
+  Activa
+  Anulada
+}
+
+enum EstadoSincronizacion {
+  PENDIENTE
+  SINCRONIZADO
+  ERROR
+}
+
+enum EstadoGuia {
+  PENDIENTE
+  EN_TRANSITO
+  RECIBIDO
+  ANULADO
+}
+
+enum TipoDevolucion {
+  CAMBIO_PRODUCTO
+  FALLA
+  DESISTIMIENTO
+}
+
+model Sucursal {
+  id        String   @id @default(uuid()) @db.Uuid
+  nombre    String   @db.VarChar(100)
+  direccion String?
+  creadoEn  DateTime @default(now()) @map("creado_en")
+
+  stockLocal        StockLocal[]
+  transacciones     Transaccion[]
+  usuarios          Usuario[]
+  guiasOrigen       GuiaDespacho[] @relation("GuiaOrigen")
+  guiasDestino      GuiaDespacho[] @relation("GuiaDestino")
+
+  @@map("sucursales")
+}
+
+model Usuario {
+  id             String        @id @default(uuid()) @db.Uuid
+  nombreCompleto String        @db.VarChar(150) @map("nombre_completo")
+  username       String        @unique @db.VarChar(50)
+  passwordHash   String        @db.VarChar(255) @map("password_hash")
+  rol            RolUsuario
+  estado         EstadoUsuario @default(Activo)
+  sucursalId     String?       @db.Uuid @map("sucursal_id")
+  creadoEn       DateTime      @default(now()) @map("creado_en")
+
+  sucursal            Sucursal?          @relation(fields: [sucursalId], references: [id])
+  transacciones       Transaccion[]
+  gastosOperacionales GastoOperacional[]
+  guiasDespacho       GuiaDespacho[]
+
+  @@map("usuarios")
+}
+
+model Entidad {
+  id                String        @id @default(uuid()) @db.Uuid
+  tipoEntidad       TipoEntidad   @map("tipo_entidad")
+  rut               String        @db.VarChar(12)
+  nombreRazonSocial String        @db.VarChar(150) @map("nombre_razon_social")
+  telefono          String?       @db.VarChar(20)
+  email             String?       @db.VarChar(100)
+  direccion         String?
+  estado            EstadoGeneral @default(Activo)
+  creadoEn          DateTime      @default(now()) @map("creado_en")
+
+  transacciones Transaccion[]
+
+  @@map("entidades")
+}
+
+model Item {
+  id            String        @id @default(uuid()) @db.Uuid
+  codigoSku     String        @unique @db.VarChar(50) @map("codigo_sku")
+  nombre        String        @db.VarChar(150)
+  unidadMedida  String        @db.VarChar(20) @map("unidad_medida")
+  precioVenta   Decimal       @default(0) @db.Decimal(12, 2) @map("precio_venta")
+  costoPromedio Decimal       @default(0) @db.Decimal(12, 2) @map("costo_promedio")
+  precioCompra  Decimal       @default(0) @db.Decimal(12, 2) @map("precio_compra")
+  afectoIva     Boolean       @default(true) @map("afecto_iva")
+  estado        EstadoGeneral @default(Activo)
+  creadoEn      DateTime      @default(now()) @map("creado_en")
+
+  stockLocal        StockLocal[]
+  detalles          TransaccionDetalle[]
+  ofertas           Oferta[]
+  detallesGuia      GuiaDespachoDetalle[]
+
+  @@map("items")
+}
+
+model StockLocal {
+  id                  String   @id @default(uuid()) @db.Uuid
+  sucursalId          String   @db.Uuid @map("sucursal_id")
+  itemId              String   @db.Uuid @map("item_id")
+  stockActual         Decimal  @default(0) @db.Decimal(12, 3) @map("stock_actual")
+  stockMinimo         Decimal  @default(0) @db.Decimal(12, 3) @map("stock_minimo")
+  ultimaActualizacion DateTime @default(now()) @updatedAt @map("ultima_actualizacion")
+
+  sucursal Sucursal @relation(fields: [sucursalId], references: [id])
+  item     Item     @relation(fields: [itemId], references: [id])
+
+  @@unique([sucursalId, itemId])
+  @@map("stock_local")
+}
+
+model Transaccion {
+  id                  String               @id @default(uuid()) @db.Uuid
+  sucursalId          String               @db.Uuid @map("sucursal_id")
+  usuarioId           String               @db.Uuid @map("usuario_id")
+  entidadId           String?              @db.Uuid @map("entidad_id")
+  tipoTransaccion     TipoTransaccion      @map("tipo_transaccion")
+  fechaRegistro       DateTime             @default(now()) @map("fecha_registro")
+  medioPago           MedioPago            @default(NoAplica) @map("medio_pago")
+  descuentoGlobal     Decimal              @default(0) @db.Decimal(12, 2) @map("descuento_global")
+  montoTotal          Decimal              @default(0) @db.Decimal(12, 2) @map("monto_total")
+  estado              EstadoTransaccion    @default(Activa)
+  sincronizacion      EstadoSincronizacion @default(SINCRONIZADO)
+  motivoMerma         String?              @db.VarChar(200) @map("motivo_merma")
+  numeroFactura       String?              @db.VarChar(50) @map("numero_factura")
+  metadatosSii        Json?                @map("metadatos_sii")
+  transaccionOrigenId String?              @db.Uuid @map("transaccion_origen_id")
+  tipoDevolucion      TipoDevolucion?      @map("tipo_devolucion")
+  observaciones       String?              @db.VarChar(300)
+
+  sucursal          Sucursal             @relation(fields: [sucursalId], references: [id])
+  usuario           Usuario              @relation(fields: [usuarioId], references: [id])
+  entidad           Entidad?             @relation(fields: [entidadId], references: [id])
+  detalles          TransaccionDetalle[]
+
+  @@map("transacciones")
+}
+
+model TransaccionDetalle {
+  id             String  @id @default(uuid()) @db.Uuid
+  transaccionId  String  @db.Uuid @map("transaccion_id")
+  itemId         String  @db.Uuid @map("item_id")
+  cantidad       Decimal @db.Decimal(12, 3)
+  costoUnitario  Decimal @default(0) @db.Decimal(12, 2) @map("costo_unitario")
+  precioUnitario Decimal @default(0) @db.Decimal(12, 2) @map("precio_unitario")
+  montoIva       Decimal @default(0) @db.Decimal(12, 2) @map("monto_iva")
+  descuentoLinea Decimal @default(0) @db.Decimal(12, 2) @map("descuento_linea")
+  subtotal       Decimal @db.Decimal(12, 2)
+
+  transaccion Transaccion @relation(fields: [transaccionId], references: [id], onDelete: Cascade)
+  item        Item        @relation(fields: [itemId], references: [id])
+
+  @@map("transacciones_detalle")
+}
+
+model Oferta {
+  id           String   @id @default(uuid()) @db.Uuid
+  itemId       String   @db.Uuid @map("item_id")
+  precioOferta Decimal  @db.Decimal(12, 2) @map("precio_oferta")
+  descripcion  String?  @db.VarChar(150)
+  fechaInicio  DateTime @map("fecha_inicio")
+  fechaFin     DateTime @map("fecha_fin")
+  activo       Boolean  @default(true)
+  creadoEn     DateTime @default(now()) @map("creado_en")
+
+  item Item @relation(fields: [itemId], references: [id])
+
+  @@map("ofertas")
+}
+
+model GuiaDespacho {
+  id                String     @id @default(uuid()) @db.Uuid
+  folio             Int
+  sucursalOrigenId  String     @db.Uuid @map("sucursal_origen_id")
+  sucursalDestinoId String     @db.Uuid @map("sucursal_destino_id")
+  usuarioId         String     @db.Uuid @map("usuario_id")
+  fechaEmision      DateTime   @default(now()) @map("fecha_emision")
+  fechaRecepcion    DateTime?  @map("fecha_recepcion")
+  estado            EstadoGuia @default(PENDIENTE)
+  notas             String?    @db.VarChar(300)
+  xmlPdf            String?    @db.Text @map("xml_pdf")
+
+  sucursalOrigen  Sucursal            @relation("GuiaOrigen", fields: [sucursalOrigenId], references: [id])
+  sucursalDestino Sucursal            @relation("GuiaDestino", fields: [sucursalDestinoId], references: [id])
+  usuario         Usuario             @relation(fields: [usuarioId], references: [id])
+  detalles        GuiaDespachoDetalle[]
+
+  @@map("guias_despacho")
+}
+
+model GuiaDespachoDetalle {
+  id       String  @id @default(uuid()) @db.Uuid
+  guiaId   String  @db.Uuid @map("guia_id")
+  itemId   String  @db.Uuid @map("item_id")
+  cantidad Decimal @db.Decimal(12, 3)
+
+  guia GuiaDespacho @relation(fields: [guiaId], references: [id], onDelete: Cascade)
+  item Item         @relation(fields: [itemId], references: [id])
+
+  @@map("guias_despacho_detalle")
+}
+
+model FolioDisponible {
+  id            String    @id @default(uuid()) @db.Uuid
+  tipoDoc       Int       @map("tipo_doc")
+  numero        Int
+  usado         Boolean   @default(false)
+  usadoEn       DateTime? @map("usado_en")
+  transaccionId String?   @db.Uuid @map("transaccion_id")
+
+  @@unique([tipoDoc, numero])
+  @@map("folios_disponibles")
+}
+
+model GastoOperacional {
+  id            String   @id @default(uuid()) @db.Uuid
+  usuarioId     String   @db.Uuid @map("usuario_id")
+  descripcion   String   @db.VarChar(200)
+  categoria     String   @db.VarChar(50)
+  monto         Decimal  @db.Decimal(12, 2)
+  fechaRegistro DateTime @default(now()) @map("fecha_registro")
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id])
+
+  @@map("gastos_operacionales")
+}

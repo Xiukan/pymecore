@@ -1,0 +1,203 @@
+========================================
+RESUMEN DEL PROYECTO PYMECORE
+Fecha: 23-24 junio 2026
+========================================
+
+STACK TECNOLÓGICO
+-----------------
+- SO:        Debian (entorno local)
+- Runtime:   Node.js 20 + pnpm
+- Framework: NestJS 11
+- ORM:       Prisma 7 + @prisma/adapter-pg
+- Base de datos: PostgreSQL 16 (Docker)
+- Auth:      JWT + Passport + bcrypt
+- Docs:      Swagger (@nestjs/swagger)
+
+========================================
+1. INFRAESTRUCTURA Y BASE DE DATOS
+========================================
+
+- Docker instalado en Debian desde repositorio oficial.
+- docker-compose.yml con dos servicios:
+    * PostgreSQL 16 en puerto 5433 (el 5432 ya estaba ocupado por Postgres nativo)
+    * pgAdmin en http://localhost:5050 (admin@erp.com / admin)
+- Credenciales de BD: erp_user / erp_pass / erp_db
+
+Schema Prisma (8 enums, 7 modelos):
+    * Sucursal       — multi-sucursal con UUIDs
+    * Usuario        — con rol y sucursal asignada
+    * Entidad        — clientes y proveedores
+    * Item           — catálogo de productos
+    * StockLocal     — inventario por sucursal
+    * Transaccion    — ventas, compras, mermas
+    * TransaccionDetalle — líneas de cada transacción
+    * GastoOperacional
+
+Migraciones aplicadas:
+    * 20260624000522_init
+    * 20260624023552_add_sucursal_to_usuario
+
+Seeder (prisma/seed.ts):
+    * 1 sucursal:  Casa Matriz Santiago
+    * 2 usuarios:  admin (Administrador, sin sucursal fija)
+                   vendedor1 (Vendedor, asignado a Casa Matriz)
+    * 3 ítems:     Café Molido 250g (ITEM-001)
+                   Azúcar 1kg      (ITEM-002)
+                   Agua Mineral    (ITEM-003)
+    * Stock inicial de 100 unidades por ítem en casa matriz
+    * 1 cliente:   Empresa Demo SpA (RUT 12345678-9)
+    * Passwords hasheados con bcrypt (salt rounds: 10)
+
+========================================
+2. MÓDULOS NESTJS IMPLEMENTADOS
+========================================
+
+AuthModule
+----------
+  POST  /auth/login     Pública. Devuelve JWT con { sub, username, rol, sucursalId }
+  GET   /auth/me        Requiere JWT. Datos del usuario autenticado.
+
+  Guards globales (APP_GUARD, aplican a toda la app):
+    * JwtAuthGuard   — requiere token válido en todos los endpoints
+    * RolesGuard     — valida @Roles() por endpoint
+    * SucursalGuard  — valida @CheckSucursal() por endpoint
+
+  Decoradores disponibles:
+    * @Public()              — exime una ruta del JWT
+    * @Roles('Administrador', 'Encargado', 'Vendedor')
+    * @CheckSucursal('body' | 'query' | 'params')
+    * @CurrentUser()         — inyecta el usuario del token en el controlador
+
+SucursalesModule
+----------------
+  GET   /sucursales          Listar todas
+  GET   /sucursales/:id      Detalle + conteo de stock y transacciones
+  POST  /sucursales          Solo Administrador
+  PATCH /sucursales/:id      Solo Administrador
+
+ItemsModule
+-----------
+  GET    /items              Listar activos (?todos=true para todos)
+  GET    /items/:id          Obtener por ID
+  POST   /items              Admin + Encargado
+  PATCH  /items/:id          Admin + Encargado
+  DELETE /items/:id          Solo Admin (soft delete → estado: Inactivo)
+
+EntidadesModule
+---------------
+  GET    /entidades           Listar (?tipo=CLIENTE|PROVEEDOR)
+  GET    /entidades/:id       Obtener por ID
+  POST   /entidades           Admin + Encargado
+  PATCH  /entidades/:id       Admin + Encargado
+  DELETE /entidades/:id       Solo Admin (soft delete)
+
+StockModule
+-----------
+  GET   /stock               Listar (?sucursalId=) — restringido por SucursalGuard
+  GET   /stock/alertas       Ítems con stock <= mínimo
+  POST  /stock               Admin + Encargado (registro inicial)
+  PATCH /stock/:id           Admin + Encargado (ajuste manual)
+
+TransactionsModule
+------------------
+  POST  /transactions        Crear venta/compra/merma
+                             - Descuento atómico de stock con $transaction de Prisma
+                             - Emite boleta electrónica mock (SiiIntegrationService)
+                             - Guarda XML base64 + folio en metadatos_sii (JSONB)
+                             - Restringido por SucursalGuard
+  GET   /transactions        Listar (?sucursalId=) — restringido por SucursalGuard
+  GET   /transactions/:id    Solo Admin + Encargado
+
+SiiModule (mock)
+----------------
+  SiiIntegrationService.emitirBoleta()
+    - Genera folio secuencial
+    - Produce XML de boleta electrónica tipo DTE-39 (formato SII Chile)
+    - Devuelve xmlBase64 + timbre para almacenar en metadatos_sii
+
+========================================
+3. SEGURIDAD
+========================================
+
+Autenticación:
+  - JWT con expiración de 8h (configurable en .env)
+  - Payload incluye: { sub, username, rol, sucursalId }
+  - Contraseñas en bcrypt, 10 salt rounds
+
+Autorización por roles:
+  - Administrador  → acceso total a todos los endpoints
+  - Encargado      → gestión de catálogo, stock; sin acceso a config del sistema
+  - Vendedor       → solo lectura de catálogo, crear transacciones en su sucursal
+
+Aislamiento por sucursal:
+  - Vendedor y Encargado solo pueden operar en la sucursal asignada en su token
+  - Intentar operar en otra sucursal devuelve 403
+  - Usuario sin sucursal asignada recibe 403 con mensaje de contactar al admin
+  - Administrador sin sucursalId asignado → acceso global sin restricción
+
+========================================
+4. CORS Y DOCUMENTACIÓN
+========================================
+
+CORS:
+  - Origen configurado en .env (CORS_ORIGIN=http://localhost:5173)
+  - Métodos permitidos: GET, POST, PATCH, DELETE, OPTIONS
+  - credentials: true
+
+Swagger:
+  - Disponible en http://localhost:3000/api-docs
+  - Autenticación Bearer JWT integrada con persistAuthorization
+  - 6 grupos: Auth, Sucursales, Items, Entidades, Stock, Transacciones
+  - Ejemplos en DTOs y query params documentados
+
+========================================
+5. VARIABLES DE ENTORNO (.env)
+========================================
+
+DATABASE_URL="postgresql://erp_user:erp_pass@localhost:5433/erp_db"
+APP_PORT=3000
+JWT_SECRET="pymecore_dev_secret_changeme_in_production"
+JWT_EXPIRES_IN="8h"
+CORS_ORIGIN="http://localhost:5173"
+
+========================================
+6. COMANDOS ÚTILES
+========================================
+
+# Levantar contenedores
+docker compose up -d
+
+# Desarrollo con hot reload
+cd erp-backend && pnpm start:dev
+
+# Repoblar datos de prueba
+pnpm seed
+
+# Nueva migración tras cambio en schema
+npx prisma migrate dev --name nombre_migracion
+
+# Ver API documentada
+Abrir http://localhost:3000/api-docs
+
+========================================
+7. ESTADO ACTUAL Y SIGUIENTES PASOS
+========================================
+
+COMPLETADO:
+  [x] Infraestructura Docker
+  [x] Schema Prisma + migraciones
+  [x] Seeder con datos de prueba
+  [x] AuthModule (JWT + bcrypt)
+  [x] Guards globales (JWT, Roles, Sucursal)
+  [x] CRUD: Sucursales, Items, Entidades, Stock
+  [x] Flujo de Transacciones con stock atómico
+  [x] Mock SII (boleta electrónica)
+  [x] CORS + Swagger
+
+PENDIENTE (próximas sesiones):
+  [ ] Frontend (React/Vue orientado a pymes)
+  [ ] Módulo de Gastos Operacionales
+  [ ] Módulo de Usuarios (gestión desde admin)
+  [ ] Dashboard con resumen de ventas y alertas de stock
+  [ ] Sincronización offline-first (cola de transacciones pendientes)
+  [ ] Integración real con SII para facturación electrónica

@@ -1,0 +1,100 @@
+========================================
+REPORTE TECH LEAD — PYMECORE
+========================================
+
+----------------------------------------
+1. AUDITORÍA DE ESTADO ACTUAL
+----------------------------------------
+
+INFRAESTRUCTURA
+- docker-compose.yml        PostgreSQL 16 (puerto 5433) + pgAdmin
+- prisma/schema.prisma      8 enums, 7 modelos, migración init aplicada
+- prisma/seed.ts            1 sucursal, 2 usuarios, 3 ítems con stock, 1 cliente
+- prisma.config.ts          Conexión Prisma 7 vía @prisma/adapter-pg
+- .env                      DATABASE_URL, APP_PORT
+
+MÓDULOS NESTJS
+
+  PrismaModule
+    prisma.service.ts + prisma.module.ts
+    Estado: Listo, global
+
+  SiiModule
+    sii-integration.service.ts + sii.module.ts
+    Estado: Mock funcional
+
+  TransactionsModule
+    transactions.controller.ts
+    transactions.service.ts
+    dto/create-transaction.dto.ts
+    Estado: Listo y probado
+
+ENDPOINTS OPERATIVOS
+
+  POST  /transactions     Crea transacción, descuenta stock atómico, emite boleta mock
+  GET   /transactions     Lista con filtro opcional ?sucursalId=
+  GET   /transactions/:id Detalle completo con relaciones
+
+MODELOS SIN MÓDULO AÚN (existen en schema pero sin endpoints):
+  Entidad (clientes/proveedores)
+  Item (catálogo)
+  StockLocal (inventario)
+  Usuario (gestión de usuarios)
+  GastoOperacional
+
+----------------------------------------
+2. EVALUACIÓN DE SEGURIDAD
+----------------------------------------
+
+El backend actual está completamente abierto.
+Antes de conectar cualquier frontend:
+
+CRÍTICO (bloquea el piloto)
+  - Sin autenticación: cualquier petición HTTP accede a todos los endpoints
+  - Sin autorización por roles: un Vendedor podría anular transacciones
+    o ver datos de otras sucursales
+  - Passwords en SHA-256 sin sal: el seed usa crypto.createHash, no bcrypt;
+    vulnerable a rainbow tables
+
+IMPORTANTE (deuda técnica asumible en piloto controlado)
+  - Sin rate limiting: endpoints de venta pueden ser abusados
+  - Sin guard de sucursal: un usuario de sucursal A puede crear
+    transacciones en sucursal B pasando el UUID por body
+  - metadatosSii acepta cualquier JSON sin validación de forma
+
+MENOR (post-piloto)
+  - Sin HTTPS (depende del reverse proxy en producción)
+  - Sin audit log de quién modificó qué
+
+----------------------------------------
+3. HOJA DE RUTA INMEDIATA
+----------------------------------------
+
+TAREA 1 — AuthModule con JWT (prioridad máxima)
+  Implementar POST /auth/login que valide username/password con bcrypt,
+  devuelva un JWT con payload { sub, rol, sucursalId }, y un JwtAuthGuard
+  global que proteja todos los endpoints. Esto desbloquea el resto.
+
+TAREA 2 — Guards de roles y sucursal
+  Un RolesGuard con el decorador @Roles('Administrador', 'Encargado') que
+  rechace con 403 si el rol del token no alcanza. Adicionalmente, un guard
+  que valide que el sucursalId del body coincide con el del token para
+  usuarios con rol Vendedor.
+
+TAREA 3 — Módulos CRUD base (Ítems, Entidades, Stock)
+  Endpoints mínimos para que el frontend pueda popular los selectores de
+  una venta:
+    GET /items
+    GET /entidades?tipo=CLIENTE
+    GET /stock?sucursalId=
+  Sin esto el frontend no puede operar.
+
+TAREA 4 — Contrato de API + CORS
+  Habilitar CORS con origen específico del frontend, activar
+  @nestjs/swagger para documentación automática en /api-docs, y fijar
+  respuestas de error en formato estándar { statusCode, message, error }.
+  Reduce la fricción al conectar el frontend.
+
+ORDEN RECOMENDADO: Tarea 1 → 3 → 2 → 4
+Se puede llevar al piloto con Tareas 1 y 3 completas si el entorno
+es controlado (red interna, usuarios conocidos).
