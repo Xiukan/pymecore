@@ -23,11 +23,17 @@ Verifica: `node --version` debe mostrar `v20.x.x`
 
 ### pnpm
 
-Una vez instalado Node.js:
-
-```bash
-npm install -g pnpm
+**Windows (PowerShell):**
+```powershell
+Invoke-WebRequest https://get.pnpm.io/install.ps1 -UseBasicParsing | Invoke-Expression
 ```
+
+**Mac / Linux:**
+```bash
+curl -fsSL https://get.pnpm.io/install.sh | sh -
+```
+
+Cierra y vuelve a abrir la terminal para que el comando `pnpm` quede disponible.
 
 Verifica: `pnpm --version`
 
