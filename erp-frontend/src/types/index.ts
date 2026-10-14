@@ -122,3 +122,32 @@ export interface GuiaDespacho {
   usuario: { nombreCompleto: string }
   detalles: GuiaDetalle[]
 }
+
+export interface RankingFila {
+  nombre: string
+  monto: number
+  ventas: number
+  unidades: number
+  margen: number
+}
+
+export interface DashboardReporte {
+  kpis: {
+    ventasTotales: number
+    numVentas: number
+    ticketPromedio: number
+    unidadesVendidas: number
+    margenBruto: number
+    margenPct: number
+    clientesUnicos: number
+    devoluciones: number
+    numDevoluciones: number
+    costoMermas: number
+  }
+  serie: { periodo: string; monto: number; ventas: number; margen: number }[]
+  mediosPago: { medio: string; monto: number }[]
+  productos: { itemId: string; nombre: string; sku: string; monto: number; unidades: number; margen: number; lineas: number }[]
+  sucursales: RankingFila[]
+  vendedores: RankingFila[]
+  inventario: { sucursal: string; valor: number; productos: number; alertas: number }[]
+}

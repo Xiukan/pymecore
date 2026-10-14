@@ -1,5 +1,5 @@
 import { api } from './client'
-import type { Entidad, GuiaDespacho, Item, Oferta, StockLocal, Sucursal, Transaccion, Usuario } from '@/types'
+import type { DashboardReporte, Entidad, GuiaDespacho, Item, Oferta, StockLocal, Sucursal, Transaccion, Usuario } from '@/types'
 
 // Auth
 export const login = (username: string, password: string) =>
@@ -165,3 +165,11 @@ export const ejecutarSync = (sucursalId?: string) =>
     `/sync/ejecutar${sucursalId ? `?sucursalId=${sucursalId}` : ''}`,
     {}
   )
+
+// Reportes
+export const getDashboard = (params: {
+  desde: string
+  hasta: string
+  granularidad: 'dia' | 'semana' | 'mes'
+  sucursalId?: string
+}) => api.get<DashboardReporte>('/reportes/dashboard', { params })

@@ -3,3 +3,8 @@
 * { box-sizing: border-box; }
 body { margin: 0; font-family: system-ui, sans-serif; }
 #root { min-height: 100vh; }
+
+.recharts-wrapper :focus,
+.recharts-surface:focus {
+  outline: none;
+}

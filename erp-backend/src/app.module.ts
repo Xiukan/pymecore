@@ -7,6 +7,7 @@ import { SyncModule } from './sync/sync.module';
 import { ItemsModule } from './items/items.module';
 import { OfertasModule } from './ofertas/ofertas.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { ReportesModule } from './reportes/reportes.module';
 import { StockModule } from './stock/stock.module';
 import { SucursalesModule } from './sucursales/sucursales.module';
 import { TransactionsModule } from './transactions/transactions.module';
@@ -26,6 +27,7 @@ import { UsuariosModule } from './usuarios/usuarios.module';
     OfertasModule,
     GuiasDespachoModule,
     SyncModule,
+    ReportesModule,
   ],
 })
 export class AppModule {}
