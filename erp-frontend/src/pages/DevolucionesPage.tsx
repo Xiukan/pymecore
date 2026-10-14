@@ -70,7 +70,6 @@ export default function DevolucionesPage() {
     try {
       await createTransaccion({
         sucursalId: sucursalId || transaccion.sucursalId,
-        usuarioId: user!.id,
         tipoTransaccion: tipo === 'FALLA' ? 'NOTA_CREDITO' : 'DEVOLUCION',
         medioPago: tipo === 'FALLA' ? transaccion.medioPago : 'NoAplica',
         transaccionOrigenId: transaccion.id,

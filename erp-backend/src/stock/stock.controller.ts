@@ -1,9 +1,10 @@
-import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query, Request } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { CheckSucursal } from '../auth/decorators/check-sucursal.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { AdjustStockDto, CreateStockDto } from './dto/adjust-stock.dto';
 import { StockService } from './stock.service';
+import { ParseLooseUuidPipe } from '../utils/parse-uuid.pipe';
 
 @ApiTags('Stock')
 @ApiBearerAuth('JWT')
@@ -38,7 +39,7 @@ export class StockController {
   @Patch(':id')
   @Roles('Administrador', 'Encargado')
   @ApiOperation({ summary: 'Ajustar stock manualmente' })
-  adjust(@Param('id') id: string, @Body() dto: AdjustStockDto) {
-    return this.service.adjust(id, dto);
+  adjust(@Param('id', ParseLooseUuidPipe) id: string, @Body() dto: AdjustStockDto, @Request() req: any) {
+    return this.service.adjust(id, dto, req.user);
   }
 }

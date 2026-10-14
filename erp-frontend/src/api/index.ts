@@ -79,22 +79,27 @@ export const getTransaccion = (id: string) =>
 export const getTransaccionByFolio = (folio: string) =>
   api.get<Transaccion>(`/transactions/folio/${encodeURIComponent(folio)}`)
 
-export const createTransaccion = (data: {
-  sucursalId: string
-  usuarioId: string
-  entidadId?: string
-  tipoTransaccion: string
-  medioPago?: string
-  descuentoGlobal?: number
-  rutReceptor?: string
-  razonSocialReceptor?: string
-  tipoDocumento?: number
-  transaccionOrigenId?: string
-  tipoDevolucion?: string
-  observaciones?: string
-  motivoMerma?: string
-  detalles: { itemId: string; cantidad: number; precioUnitario: number }[]
-}) => api.post<Transaccion>('/transactions', data)
+export const createTransaccion = (
+  data: {
+    sucursalId: string
+    entidadId?: string
+    tipoTransaccion: string
+    medioPago?: string
+    descuentoGlobal?: number
+    rutReceptor?: string
+    razonSocialReceptor?: string
+    tipoDocumento?: number
+    transaccionOrigenId?: string
+    tipoDevolucion?: string
+    observaciones?: string
+    motivoMerma?: string
+    detalles: { itemId: string; cantidad: number; precioUnitario?: number }[]
+  },
+  idempotencyKey?: string,
+) =>
+  api.post<Transaccion>('/transactions', data, {
+    headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : undefined,
+  })
 
 // Usuarios
 export const getUsuarios = () => api.get<Usuario[]>('/usuarios')

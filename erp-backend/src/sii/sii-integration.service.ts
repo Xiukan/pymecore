@@ -14,9 +14,21 @@ export interface DteData {
   razonSocialReceptor: string;
   fechaEmision: string;
   montoTotal: number;
+  /** Desglose del total (precios con IVA incluido). */
+  montoNeto?: number;
+  iva?: number;
   primerItem: string;
   detalles: { nombre: string; cantidad: number; precio: number; subtotal: number }[];
 }
+
+/** Texto que viene de usuarios o del catálogo: sin escapar rompería el XML o inyectaría nodos. */
+const xml = (valor: string | number) =>
+  String(valor)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
 
 export interface DteResult {
   folio: number;
@@ -92,10 +104,10 @@ export class SiiIntegrationService {
       `<TD>${datos.tipoDoc}</TD>` +
       `<F>${datos.folio}</F>` +
       `<FE>${datos.fechaEmision}</FE>` +
-      `<RR>${datos.rutReceptor}</RR>` +
-      `<RSR>${datos.razonSocialReceptor.substring(0, 40)}</RSR>` +
+      `<RR>${xml(datos.rutReceptor)}</RR>` +
+      `<RSR>${xml(datos.razonSocialReceptor.substring(0, 40))}</RSR>` +
       `<MNT>${Math.round(datos.montoTotal)}</MNT>` +
-      `<IT1>${datos.primerItem.substring(0, 40)}</IT1>` +
+      `<IT1>${xml(datos.primerItem.substring(0, 40))}</IT1>` +
       daXml +
       `<TSTED>${tsted}</TSTED>` +
       `</DD>`;
@@ -116,7 +128,7 @@ export class SiiIntegrationService {
         (d, i) =>
           `<Detalle>` +
           `<NroLinDet>${i + 1}</NroLinDet>` +
-          `<NmbItem>${d.nombre}</NmbItem>` +
+          `<NmbItem>${xml(d.nombre)}</NmbItem>` +
           `<QtyItem>${d.cantidad}</QtyItem>` +
           `<PrcItem>${Math.round(d.precio)}</PrcItem>` +
           `<MntItem>${Math.round(d.subtotal)}</MntItem>` +
@@ -130,8 +142,11 @@ export class SiiIntegrationService {
       `<Encabezado>` +
       `<IdDoc><TipoDTE>${datos.tipoDoc}</TipoDTE><Folio>${datos.folio}</Folio><FchEmis>${datos.fechaEmision}</FchEmis></IdDoc>` +
       `<Emisor><RUTEmisor>${datos.rutEmisor}</RUTEmisor><RznSoc>EMPRESA PRUEBA SPA</RznSoc><Giro>TECNOLOGIA</Giro><DirOrigen>AV. TESIS 123</DirOrigen><CmnaOrigen>VILLA ALEGRE</CmnaOrigen></Emisor>` +
-      `<Receptor><RUTRecep>${datos.rutReceptor}</RUTRecep><RznSocRecep>${datos.razonSocialReceptor}</RznSocRecep><DirRecep>DIR</DirRecep><CmnaRecep>CMNA</CmnaRecep></Receptor>` +
-      `<Totales><MntTotal>${Math.round(datos.montoTotal)}</MntTotal></Totales>` +
+      `<Receptor><RUTRecep>${xml(datos.rutReceptor)}</RUTRecep><RznSocRecep>${xml(datos.razonSocialReceptor)}</RznSocRecep><DirRecep>DIR</DirRecep><CmnaRecep>CMNA</CmnaRecep></Receptor>` +
+      `<Totales>` +
+      (datos.montoNeto !== undefined ? `<MntNeto>${Math.round(datos.montoNeto)}</MntNeto>` : '') +
+      (datos.iva !== undefined ? `<IVA>${Math.round(datos.iva)}</IVA>` : '') +
+      `<MntTotal>${Math.round(datos.montoTotal)}</MntTotal></Totales>` +
       `</Encabezado>` +
       detalles +
       tedXml +

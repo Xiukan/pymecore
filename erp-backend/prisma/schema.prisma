@@ -49,6 +49,7 @@ enum EstadoTransaccion {
 
 enum EstadoSincronizacion {
   PENDIENTE
+  ENVIANDO
   SINCRONIZADO
   ERROR
 }
@@ -95,6 +96,8 @@ model Usuario {
   transacciones       Transaccion[]
   gastosOperacionales GastoOperacional[]
   guiasDespacho       GuiaDespacho[]
+  operaciones         OperacionIdempotente[]
+  ajustesStock        AjusteStock[]
 
   @@map("usuarios")
 }
@@ -143,8 +146,9 @@ model StockLocal {
   stockMinimo         Decimal  @default(0) @db.Decimal(12, 3) @map("stock_minimo")
   ultimaActualizacion DateTime @default(now()) @updatedAt @map("ultima_actualizacion")
 
-  sucursal Sucursal @relation(fields: [sucursalId], references: [id])
-  item     Item     @relation(fields: [itemId], references: [id])
+  sucursal Sucursal      @relation(fields: [sucursalId], references: [id])
+  item     Item          @relation(fields: [itemId], references: [id])
+  ajustes  AjusteStock[]
 
   @@unique([sucursalId, itemId])
   @@map("stock_local")
@@ -172,6 +176,8 @@ model Transaccion {
   sucursal          Sucursal             @relation(fields: [sucursalId], references: [id])
   usuario           Usuario              @relation(fields: [usuarioId], references: [id])
   entidad           Entidad?             @relation(fields: [entidadId], references: [id])
+  transaccionOrigen Transaccion?         @relation("Retornos", fields: [transaccionOrigenId], references: [id], onDelete: Restrict)
+  retornos          Transaccion[]        @relation("Retornos")
   detalles          TransaccionDetalle[]
 
   @@map("transacciones")
@@ -211,7 +217,7 @@ model Oferta {
 
 model GuiaDespacho {
   id                String     @id @default(uuid()) @db.Uuid
-  folio             Int
+  folio             Int        @unique
   sucursalOrigenId  String     @db.Uuid @map("sucursal_origen_id")
   sucursalDestinoId String     @db.Uuid @map("sucursal_destino_id")
   usuarioId         String     @db.Uuid @map("usuario_id")
@@ -247,7 +253,7 @@ model FolioDisponible {
   numero        Int
   usado         Boolean   @default(false)
   usadoEn       DateTime? @map("usado_en")
-  transaccionId String?   @db.Uuid @map("transaccion_id")
+  transaccionId String?   @unique @db.Uuid @map("transaccion_id")
 
   @@unique([tipoDoc, numero])
   @@map("folios_disponibles")
@@ -264,4 +270,37 @@ model GastoOperacional {
   usuario Usuario @relation(fields: [usuarioId], references: [id])
 
   @@map("gastos_operacionales")
+}
+
+// Reintentos seguros (equivalente a core.IdempotentOperation de APS): la misma clave
+// del mismo usuario devuelve el documento ya creado en vez de crear otro.
+model OperacionIdempotente {
+  id            String   @id @default(uuid()) @db.Uuid
+  usuarioId     String   @db.Uuid @map("usuario_id")
+  operacion     String   @db.VarChar(100)
+  clave         String   @db.Uuid
+  huella        String   @db.Char(64)
+  transaccionId String?  @db.Uuid @map("transaccion_id")
+  creadoEn      DateTime @default(now()) @map("creado_en")
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id])
+
+  @@unique([usuarioId, operacion, clave])
+  @@map("operaciones_idempotentes")
+}
+
+// Trazabilidad de ajustes manuales de stock: quién cambió qué, de cuánto a cuánto y por qué.
+model AjusteStock {
+  id           String   @id @default(uuid()) @db.Uuid
+  stockLocalId String   @db.Uuid @map("stock_local_id")
+  usuarioId    String   @db.Uuid @map("usuario_id")
+  anterior     Decimal  @db.Decimal(12, 3)
+  nuevo        Decimal  @db.Decimal(12, 3)
+  motivo       String?  @db.VarChar(200)
+  creadoEn     DateTime @default(now()) @map("creado_en")
+
+  stockLocal StockLocal @relation(fields: [stockLocalId], references: [id])
+  usuario    Usuario    @relation(fields: [usuarioId], references: [id])
+
+  @@map("ajustes_stock")
 }

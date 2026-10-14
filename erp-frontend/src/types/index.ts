@@ -82,7 +82,7 @@ export interface Transaccion {
   tipoDevolucion: 'CAMBIO_PRODUCTO' | 'FALLA' | 'DESISTIMIENTO' | null
   observaciones: string | null
   motivoMerma: string | null
-  sincronizacion: 'PENDIENTE' | 'SINCRONIZADO' | 'ERROR'
+  sincronizacion: 'PENDIENTE' | 'ENVIANDO' | 'SINCRONIZADO' | 'ERROR'
   metadatosSii: Record<string, any> | null
   entidad?: Pick<Entidad, 'nombreRazonSocial' | 'rut'> | null
   detalles?: TransaccionDetalle[]

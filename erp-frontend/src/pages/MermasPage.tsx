@@ -73,7 +73,6 @@ export default function MermasPage() {
     try {
       await createTransaccion({
         sucursalId,
-        usuarioId: user!.id,
         tipoTransaccion: 'MERMA',
         medioPago: 'NoAplica',
         motivoMerma: motivo,

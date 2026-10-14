@@ -1,4 +1,5 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { exigirSucursal, UsuarioSesion } from '../auth/sucursal-scope';
 import { PrismaService } from '../prisma/prisma.service';
 import { AdjustStockDto, CreateStockDto } from './dto/adjust-stock.dto';
 
@@ -41,10 +42,27 @@ export class StockService {
     return this.prisma.stockLocal.create({ data: dto });
   }
 
-  async adjust(id: string, dto: AdjustStockDto) {
-    const stock = await this.prisma.stockLocal.findUnique({ where: { id } });
-    if (!stock) throw new NotFoundException('Registro de stock no encontrado');
+  /** Conteo físico: fija el valor bajo bloqueo de la fila y deja constancia del cambio. */
+  async adjust(id: string, dto: AdjustStockDto, user: UsuarioSesion) {
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM stock_local WHERE id = ${id}::uuid FOR UPDATE`;
+      const stock = await tx.stockLocal.findUnique({ where: { id } });
+      if (!stock) throw new NotFoundException('Registro de stock no encontrado');
+      exigirSucursal(user, stock.sucursalId);
 
-    return this.prisma.stockLocal.update({ where: { id }, data: dto });
+      const { motivo, ...data } = dto;
+      if (data.stockActual !== undefined && !stock.stockActual.eq(data.stockActual)) {
+        await tx.ajusteStock.create({
+          data: {
+            stockLocalId: id,
+            usuarioId: user.id,
+            anterior: stock.stockActual,
+            nuevo: data.stockActual,
+            motivo,
+          },
+        });
+      }
+      return tx.stockLocal.update({ where: { id }, data });
+    });
   }
 }

@@ -1,8 +1,11 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { createHash } from 'crypto';
+import { isUUID } from 'class-validator';
 import { Item, Prisma, TipoTransaccion } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { SiiIntegrationService } from '../sii/sii-integration.service';
@@ -13,6 +16,25 @@ import { CreateTransactionDto } from './dto/create-transaction.dto';
 type Tx = Prisma.TransactionClient;
 
 const RETORNOS: TipoTransaccion[] = [TipoTransaccion.DEVOLUCION, TipoTransaccion.NOTA_CREDITO];
+const OPERACION = 'transactions.create:v1';
+
+/** JSON con claves ordenadas: el mismo contenido produce siempre la misma huella. */
+function canonico(valor: unknown): string {
+  if (Array.isArray(valor)) return `[${valor.map(canonico).join(',')}]`;
+  if (valor && typeof valor === 'object') {
+    return `{${Object.keys(valor)
+      .filter((k) => (valor as Record<string, unknown>)[k] !== undefined)
+      .sort()
+      .map((k) => `${JSON.stringify(k)}:${canonico((valor as Record<string, unknown>)[k])}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(valor);
+}
+
+const esConflictoIdempotencia = (err: unknown) =>
+  err instanceof Prisma.PrismaClientKnownRequestError &&
+  err.code === 'P2002' &&
+  JSON.stringify(err.meta ?? {}).includes('clave');
 
 interface LineaPreparada {
   itemId: string;
@@ -24,6 +46,12 @@ interface LineaPreparada {
   subtotal: Prisma.Decimal;
 }
 
+/** MntNeto e IVA del DTE a partir del IVA ya repartido en las líneas. */
+export function desglose(t: { montoTotal: Prisma.Decimal; detalles: { montoIva: Prisma.Decimal }[] }) {
+  const iva = t.detalles.reduce((s, d) => s.add(d.montoIva), ZERO);
+  return { iva: Number(iva), montoNeto: Number(t.montoTotal.sub(iva)) };
+}
+
 @Injectable()
 export class TransactionsService {
   constructor(
@@ -31,10 +59,57 @@ export class TransactionsService {
     private readonly sii: SiiIntegrationService,
   ) {}
 
-  async create(dto: CreateTransactionDto, usuarioId: string) {
+  /**
+   * Con `clave` (cabecera Idempotency-Key) un reintento devuelve el documento ya creado
+   * en vez de cobrar y descontar stock otra vez.
+   */
+  async create(dto: CreateTransactionDto, usuarioId: string, clave?: string) {
+    if (clave === undefined) return this.registrar(dto, usuarioId);
+    if (!isUUID(clave)) throw new BadRequestException('Idempotency-Key debe ser un UUID.');
+    const huella = createHash('sha256').update(canonico({ ...dto, usuarioId: undefined })).digest('hex');
+
+    const previa = await this.repetida(usuarioId, clave, huella);
+    if (previa) return previa;
+    try {
+      return await this.registrar(dto, usuarioId, { clave, huella });
+    } catch (err) {
+      // Otra petición con la misma clave ganó la reserva: se devuelve su resultado.
+      if (esConflictoIdempotencia(err)) {
+        const ganadora = await this.repetida(usuarioId, clave, huella);
+        if (ganadora) return ganadora;
+      }
+      throw err;
+    }
+  }
+
+  private async repetida(usuarioId: string, clave: string, huella: string) {
+    const op = await this.prisma.operacionIdempotente.findUnique({
+      where: { usuarioId_operacion_clave: { usuarioId, operacion: OPERACION, clave } },
+    });
+    if (!op) return null;
+    if (op.huella !== huella) {
+      throw new ConflictException('Este envío ya se usó con otros datos. Revise la operación original.');
+    }
+    const t = await this.prisma.transaccion.findUniqueOrThrow({
+      where: { id: op.transaccionId! },
+      include: { detalles: true },
+    });
+    const meta = t.metadatosSii as Record<string, unknown> | null;
+    const dte = meta?.xmlFirmado ? meta : null;
+    return { ...t, dte, pendiente: !dte, folio: t.numeroFactura ? Number(t.numeroFactura) : undefined, repetida: true };
+  }
+
+  private async registrar(
+    dto: CreateTransactionDto,
+    usuarioId: string,
+    idem?: { clave: string; huella: string },
+  ) {
     const itemIds = dto.detalles.map((d) => d.itemId);
     if (new Set(itemIds).size !== itemIds.length) {
       throw new BadRequestException('El documento repite un ítem; agrupe las cantidades en una sola línea.');
+    }
+    if (dto.tipoTransaccion === TipoTransaccion.MERMA && !dto.motivoMerma?.trim()) {
+      throw new BadRequestException('Indique el motivo de la merma.');
     }
     const esRetorno = RETORNOS.includes(dto.tipoTransaccion);
     if (esRetorno && !dto.transaccionOrigenId) {
@@ -50,6 +125,12 @@ export class TransactionsService {
     const itemMap = new Map(items.map((i) => [i.id, i]));
 
     const transaccion = await this.prisma.$transaction(async (tx) => {
+      // La reserva va primero: una segunda petición con la misma clave espera aquí y luego falla por unicidad.
+      if (idem) {
+        await tx.operacionIdempotente.create({
+          data: { usuarioId, operacion: OPERACION, clave: idem.clave, huella: idem.huella },
+        });
+      }
       const lineas = esRetorno
         ? await this.prepararRetorno(tx, dto)
         : await this.prepararDocumento(tx, dto, itemMap);
@@ -89,6 +170,12 @@ export class TransactionsService {
         },
         include: { detalles: true },
       });
+      if (idem) {
+        await tx.operacionIdempotente.update({
+          where: { usuarioId_operacion_clave: { usuarioId, operacion: OPERACION, clave: idem.clave } },
+          data: { transaccionId: creada.id },
+        });
+      }
       if (!esVenta) return { creada, folio: null as number | null, tipoDoc };
 
       const folio = await reclamarFolio(tx, tipoDoc, creada.id);
@@ -117,6 +204,7 @@ export class TransactionsService {
         razonSocialReceptor: dto.razonSocialReceptor ?? 'CLIENTE FINAL',
         fechaEmision: new Date().toISOString().substring(0, 10),
         montoTotal: Number(creada.montoTotal),
+        ...desglose(creada),
         primerItem: itemMap.get(creada.detalles[0]?.itemId)?.nombre ?? 'Item',
         detalles: creada.detalles.map((d) => ({
           nombre: itemMap.get(d.itemId)?.nombre ?? 'Item',

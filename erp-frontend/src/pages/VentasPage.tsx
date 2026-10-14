@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useAuth } from '@/context/AuthContext'
+import { nuevoUuid } from '@/utils/uuid'
 import { getItems, getStock, getSucursales, createTransaccion, getEntidadByRut, createEntidad, getOfertas, ejecutarSync } from '@/api'
 import { useOnlineStatus } from '@/hooks/useOnlineStatus'
 import { validarRut, calcularDv, rutConDv, formatRut, RUT_DEFAULT } from '@/utils/rut'
@@ -223,6 +224,13 @@ export default function VentasPage() {
   const eliminarLinea = (itemId: string) => setLineas((p) => p.filter((l) => l.itemId !== itemId))
   const total = lineas.reduce((s, l) => s + l.precioUnitario * l.cantidad, 0)
 
+  // Una clave por intento de cobro: si la respuesta se pierde, reintentar no cobra dos veces.
+  // Cambiar el carrito es otra intención y necesita otra clave.
+  const claveCobro = useRef<string | null>(null)
+  useEffect(() => {
+    claveCobro.current = null
+  }, [lineas, entidadId, tipoDoc])
+
   const handleCobrar = async () => {
     if (!sucursalId || lineas.length === 0) return
     if (pasoCliente === 'inicio') {
@@ -232,10 +240,10 @@ export default function VentasPage() {
     if (!window.confirm(`¿Confirmar cobro de $${Math.round(total).toLocaleString('es-CL')}?`)) return
     setLoading(true)
     setMensaje(null)
+    claveCobro.current ??= nuevoUuid()
     try {
       const res = await createTransaccion({
         sucursalId,
-        usuarioId: user!.id,
         entidadId,
         tipoTransaccion: 'VENTA',
         medioPago: 'Efectivo',
@@ -243,7 +251,8 @@ export default function VentasPage() {
         razonSocialReceptor: razonSocial,
         tipoDocumento: tipoDoc,
         detalles: lineas.map((l) => ({ itemId: l.itemId, cantidad: l.cantidad, precioUnitario: l.precioUnitario })),
-      })
+      }, claveCobro.current)
+      claveCobro.current = null
       const dte = (res.data as any)?.dte
       const folio = dte?.folio ?? (res.data as any)?.numeroFactura ?? '?'
       setUltimaVenta({ dte, transaccion: res.data, lineas: [...lineas], rutFinal, razonSocial, tipoDoc })
@@ -259,6 +268,9 @@ export default function VentasPage() {
         setStockMap(map)
       })
     } catch (err: unknown) {
+      // Un 4xx confirma que no se registró nada; sin respuesta o con 5xx la venta pudo quedar creada.
+      const status = (err as any).response?.status
+      if (status && status < 500) claveCobro.current = null
       const msg = (err as any).response?.data?.message ?? 'Error al procesar'
       setMensaje({ tipo: 'err', texto: Array.isArray(msg) ? msg.join(', ') : msg })
     } finally {

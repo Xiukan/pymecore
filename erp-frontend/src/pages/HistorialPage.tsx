@@ -15,7 +15,7 @@ const TIPO_LABEL: Record<string, string> = {
 
 function SiiBadge({ sincronizacion }: { sincronizacion?: string }) {
   if (!sincronizacion || sincronizacion === 'SINCRONIZADO') return null
-  if (sincronizacion === 'PENDIENTE') {
+  if (sincronizacion === 'PENDIENTE' || sincronizacion === 'ENVIANDO') {
     return (
       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-700">
         <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />

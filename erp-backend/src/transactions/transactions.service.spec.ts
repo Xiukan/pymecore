@@ -1,4 +1,4 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common'
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common'
 import { Test, TestingModule } from '@nestjs/testing'
 import { Prisma, TipoTransaccion } from '@prisma/client'
 import { TransactionsService } from './transactions.service'
@@ -52,10 +52,12 @@ describe('TransactionsService', () => {
       },
       transaccionDetalle: { groupBy: jest.fn().mockResolvedValue([]) },
       $queryRaw: jest.fn().mockResolvedValue([{ numero: 1 }]),
+      operacionIdempotente: { create: jest.fn(), update: jest.fn() },
     }
     prisma = {
       item: { findMany: jest.fn().mockResolvedValue([ITEM_MOCK]) },
-      transaccion: { update: jest.fn() },
+      transaccion: { update: jest.fn(), findUniqueOrThrow: jest.fn() },
+      operacionIdempotente: { findUnique: jest.fn().mockResolvedValue(null) },
       $transaction: jest.fn().mockImplementation((cb: (t: any) => any) => cb(tx)),
     }
     const siiMock = { emitirDTE: jest.fn().mockReturnValue({ folio: 1, tipoDoc: 39 }) }
@@ -204,6 +206,40 @@ describe('TransactionsService', () => {
       tx.transaccion.findUnique.mockResolvedValue({ ...origen, detalles: [] })
 
       await expect(service.create(devolucion(1) as any, 'user-001')).rejects.toThrow(BadRequestException)
+    })
+  })
+
+  describe('idempotencia', () => {
+    const CLAVE = '6f1c2a3e-1111-4a1a-8a1a-000000000001'
+
+    it('reserva la clave dentro de la misma transacción que la venta', async () => {
+      await service.create(buildDto(1) as any, 'user-001', CLAVE)
+
+      expect(tx.operacionIdempotente.create).toHaveBeenCalled()
+      expect(tx.operacionIdempotente.update.mock.calls[0][0].data).toEqual({ transaccionId: 'tx-001' })
+    })
+
+    it('un reintento con la misma clave devuelve la venta original sin crear otra', async () => {
+      await service.create(buildDto(1) as any, 'user-001', CLAVE)
+      const huella = tx.operacionIdempotente.create.mock.calls[0][0].data.huella
+      prisma.operacionIdempotente.findUnique.mockResolvedValue({ huella, transaccionId: 'tx-001' })
+      prisma.transaccion.findUniqueOrThrow.mockResolvedValue({ id: 'tx-001', detalles: [], metadatosSii: null })
+
+      const repetida: any = await service.create(buildDto(1) as any, 'user-001', CLAVE)
+
+      expect(repetida.id).toBe('tx-001')
+      expect(repetida.repetida).toBe(true)
+      expect(tx.transaccion.create).toHaveBeenCalledTimes(1)
+    })
+
+    it('la misma clave con otro contenido responde conflicto', async () => {
+      prisma.operacionIdempotente.findUnique.mockResolvedValue({ huella: 'otra', transaccionId: 'tx-001' })
+
+      await expect(service.create(buildDto(2) as any, 'user-001', CLAVE)).rejects.toThrow(ConflictException)
+    })
+
+    it('rechaza una clave que no es UUID', async () => {
+      await expect(service.create(buildDto(1) as any, 'user-001', 'abc')).rejects.toThrow(BadRequestException)
     })
   })
 })

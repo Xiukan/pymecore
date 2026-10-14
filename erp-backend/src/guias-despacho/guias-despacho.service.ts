@@ -19,16 +19,16 @@ export class GuiasDespachoService {
       throw new BadRequestException('El origen y destino no pueden ser la misma sucursal');
     }
 
-    const lastGuia = await this.prisma.guiaDespacho.findFirst({
-      orderBy: { folio: 'desc' },
-    });
-    const folio = (lastGuia?.folio ?? 0) + 1;
-
     if (new Set(dto.detalles.map((d) => d.itemId)).size !== dto.detalles.length) {
       throw new BadRequestException('La guía repite un ítem; agrupe las cantidades en una sola línea.');
     }
 
     return this.prisma.$transaction(async (tx) => {
+      // Correlativo sin huecos ni repetidos: las creaciones concurrentes esperan su turno aquí.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('guias_despacho_folio'))`;
+      const lastGuia = await tx.guiaDespacho.findFirst({ orderBy: { folio: 'desc' } });
+      const folio = (lastGuia?.folio ?? 0) + 1;
+
       for (const d of dto.detalles) {
         const { count } = await tx.stockLocal.updateMany({
           where: { sucursalId: dto.sucursalOrigenId, itemId: d.itemId, stockActual: { gte: d.cantidad } },

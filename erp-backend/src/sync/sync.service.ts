@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { SiiIntegrationService } from '../sii/sii-integration.service';
+import { desglose } from '../transactions/transactions.service';
 import { reclamarFolio } from '../utils/folios.util';
 
 class SinFolioError extends Error {}
@@ -42,6 +43,12 @@ export class SyncService {
     const detalle: { folio: string; resultado: string }[] = [];
 
     for (const tx of pendientes) {
+      // Reserva: si otra sincronización ya la tomó, count es 0 y no se envía dos veces.
+      const { count } = await this.prisma.transaccion.updateMany({
+        where: { id: tx.id, sincronizacion: 'PENDIENTE' },
+        data: { sincronizacion: 'ENVIANDO' },
+      });
+      if (count !== 1) continue;
       try {
         await this.enviarSII(tx);
         await this.prisma.transaccion.update({
@@ -53,6 +60,10 @@ export class SyncService {
         this.logger.log(`DTE folio ${tx.numeroFactura} sincronizado con SII`);
       } catch (err) {
         if (err instanceof SinFolioError) {
+          await this.prisma.transaccion.update({
+            where: { id: tx.id },
+            data: { sincronizacion: 'PENDIENTE' },
+          });
           sinFolio++;
           detalle.push({ folio: tx.id, resultado: 'PENDIENTE: sin folio disponible' });
           continue;
@@ -122,6 +133,7 @@ export class SyncService {
       razonSocialReceptor: tx.entidad?.nombreRazonSocial ?? 'CLIENTE FINAL',
       fechaEmision: new Date(tx.fechaRegistro).toISOString().substring(0, 10),
       montoTotal: Number(tx.montoTotal),
+      ...desglose(tx),
       primerItem: detalles[0]?.nombre ?? 'Producto',
       detalles,
     });
