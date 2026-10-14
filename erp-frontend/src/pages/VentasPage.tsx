@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { useAuth } from '@/context/AuthContext'
+import { rutSinPuntos, useEmpresa } from '@/hooks/useEmpresa'
+import { nuevoUuid } from '@/utils/uuid'
 import { getItems, getStock, getSucursales, createTransaccion, getEntidadByRut, createEntidad, getOfertas, ejecutarSync } from '@/api'
 import { useOnlineStatus } from '@/hooks/useOnlineStatus'
-import { validarRut, calcularDv, rutConDv, formatRut, RUT_DEFAULT } from '@/utils/rut'
+import { validarRut, calcularDv, rutConDv, formatRut } from '@/utils/rut'
 import { generarPdfBoleta } from '@/utils/pdfBoleta'
 import type { Entidad, Item, Oferta, StockLocal, Sucursal } from '@/types'
 
@@ -37,6 +39,7 @@ type PasoCliente = 'inicio' | 'buscar' | 'registrar' | 'ok'
 
 export default function VentasPage() {
   const { user } = useAuth()
+  const empresa = useEmpresa()
   const online = useOnlineStatus()
   const [sucursales, setSucursales] = useState<Sucursal[]>([])
   const [sucursalId, setSucursalId] = useState(user?.sucursalId ?? '')
@@ -63,8 +66,9 @@ export default function VentasPage() {
   const [regDireccion, setRegDireccion] = useState('')
   const [registrando, setRegistrando] = useState(false)
   const [entidadId, setEntidadId] = useState<string | undefined>()
-  const [rutFinal, setRutFinal] = useState(RUT_DEFAULT)
-  const [razonSocial, setRazonSocial] = useState('CLIENTE FINAL')
+  // Vacío = consumidor final: el backend completa RUT y nombre desde la configuración de la empresa.
+  const [rutFinal, setRutFinal] = useState('')
+  const [razonSocial, setRazonSocial] = useState('')
 
   useEffect(() => {
     if (user?.rol === 'Administrador') {
@@ -76,7 +80,11 @@ export default function VentasPage() {
     getItems().then((r) => setItems(r.data.filter((i) => i.estado === 'Activo')))
     getOfertas(true).then((r) => {
       const map = new Map<string, number>()
-      r.data.forEach((o: Oferta) => map.set(o.itemId, Number(o.precioOferta)))
+      // Misma regla que el backend: si hay varias ofertas vigentes, rige la más baja.
+      r.data.forEach((o: Oferta) => {
+        const precio = Number(o.precioOferta)
+        if (!map.has(o.itemId) || precio < map.get(o.itemId)!) map.set(o.itemId, precio)
+      })
       setOfertaMap(map)
     })
   }, [user])
@@ -150,8 +158,8 @@ export default function VentasPage() {
   }
 
   const usarSinRut = () => {
-    setRutFinal(RUT_DEFAULT)
-    setRazonSocial('CLIENTE FINAL')
+    setRutFinal('')
+    setRazonSocial('')
     setEntidadId(undefined)
     setPasoCliente('ok')
   }
@@ -185,8 +193,8 @@ export default function VentasPage() {
     setClienteBuscado(null)
     setEntidadId(undefined)
     setRegNombre(''); setRegApellido(''); setRegEmail(''); setRegDireccion('')
-    setRutFinal(RUT_DEFAULT)
-    setRazonSocial('CLIENTE FINAL')
+    setRutFinal('')
+    setRazonSocial('')
   }
 
   const precioEfectivo = (item: Item) =>
@@ -219,6 +227,13 @@ export default function VentasPage() {
   const eliminarLinea = (itemId: string) => setLineas((p) => p.filter((l) => l.itemId !== itemId))
   const total = lineas.reduce((s, l) => s + l.precioUnitario * l.cantidad, 0)
 
+  // Una clave por intento de cobro: si la respuesta se pierde, reintentar no cobra dos veces.
+  // Cambiar el carrito es otra intención y necesita otra clave.
+  const claveCobro = useRef<string | null>(null)
+  useEffect(() => {
+    claveCobro.current = null
+  }, [lineas, entidadId, tipoDoc])
+
   const handleCobrar = async () => {
     if (!sucursalId || lineas.length === 0) return
     if (pasoCliente === 'inicio') {
@@ -228,18 +243,19 @@ export default function VentasPage() {
     if (!window.confirm(`¿Confirmar cobro de $${Math.round(total).toLocaleString('es-CL')}?`)) return
     setLoading(true)
     setMensaje(null)
+    claveCobro.current ??= nuevoUuid()
     try {
       const res = await createTransaccion({
         sucursalId,
-        usuarioId: user!.id,
         entidadId,
         tipoTransaccion: 'VENTA',
         medioPago: 'Efectivo',
-        rutReceptor: rutFinal,
-        razonSocialReceptor: razonSocial,
+        rutReceptor: rutFinal || undefined,
+        razonSocialReceptor: razonSocial || undefined,
         tipoDocumento: tipoDoc,
         detalles: lineas.map((l) => ({ itemId: l.itemId, cantidad: l.cantidad, precioUnitario: l.precioUnitario })),
-      })
+      }, claveCobro.current)
+      claveCobro.current = null
       const dte = (res.data as any)?.dte
       const folio = dte?.folio ?? (res.data as any)?.numeroFactura ?? '?'
       setUltimaVenta({ dte, transaccion: res.data, lineas: [...lineas], rutFinal, razonSocial, tipoDoc })
@@ -255,6 +271,9 @@ export default function VentasPage() {
         setStockMap(map)
       })
     } catch (err: unknown) {
+      // Un 4xx confirma que no se registró nada; sin respuesta o con 5xx la venta pudo quedar creada.
+      const status = (err as any).response?.status
+      if (status && status < 500) claveCobro.current = null
       const msg = (err as any).response?.data?.message ?? 'Error al procesar'
       setMensaje({ tipo: 'err', texto: Array.isArray(msg) ? msg.join(', ') : msg })
     } finally {
@@ -265,14 +284,14 @@ export default function VentasPage() {
   const descargarUltimoPdf = () => {
     if (!ultimaVenta) return
     const { dte, transaccion, lineas: ls, rutFinal: rut, razonSocial: rs, tipoDoc: td } = ultimaVenta
+    if (!empresa) return
     generarPdfBoleta({
       folio: dte?.folio ?? parseInt(transaccion.numeroFactura ?? '0'),
       tipoDoc: td,
       fecha: new Date().toLocaleDateString('es-CL'),
-      rutEmisor: '76.000.000-1',
-      razonSocialEmisor: 'PYMECORE SPA',
-      rutReceptor: rut,
-      razonSocialReceptor: rs,
+      emisor: empresa,
+      rutReceptor: rut || empresa.rutConsumidorFinal,
+      razonSocialReceptor: rs || empresa.nombreConsumidorFinal,
       medioPago: 'Efectivo',
       sucursal: '',
       detalles: ls.map((l: LineaVenta) => ({ nombre: l.nombre, cantidad: l.cantidad, precio: l.precioUnitario, subtotal: l.precioUnitario * l.cantidad })),
@@ -457,7 +476,7 @@ export default function VentasPage() {
               )}
               {rutError && <p style={{ margin: 0, fontSize: 11, color: '#e53e3e' }}>{rutError}</p>}
               <button onClick={usarSinRut} style={{ marginTop: 2, background: 'none', border: 'none', color: '#a0aec0', fontSize: 11, cursor: 'pointer', textAlign: 'left' }}>
-                → Continuar sin RUT ({RUT_DEFAULT})
+                → Continuar sin RUT ({empresa ? rutSinPuntos(empresa.rutConsumidorFinal) : '…'})
               </button>
             </div>
           )}
@@ -495,8 +514,8 @@ export default function VentasPage() {
           {pasoCliente === 'ok' && (
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
-                <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: '#276749' }}>✓ {razonSocial}</p>
-                <p style={{ margin: 0, fontSize: 11, color: '#a0aec0' }}>{rutFinal}</p>
+                <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: '#276749' }}>✓ {razonSocial || empresa?.nombreConsumidorFinal}</p>
+                <p style={{ margin: 0, fontSize: 11, color: '#a0aec0' }}>{rutFinal || (empresa && rutSinPuntos(empresa.rutConsumidorFinal))}</p>
               </div>
               <button onClick={resetCliente} style={{ background: 'none', border: 'none', color: '#a0aec0', fontSize: 11, cursor: 'pointer' }}>Cambiar</button>
             </div>

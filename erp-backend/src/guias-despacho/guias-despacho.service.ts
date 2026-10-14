@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateGuiaDto } from './dto/guia.dto';
 
@@ -18,26 +19,27 @@ export class GuiasDespachoService {
       throw new BadRequestException('El origen y destino no pueden ser la misma sucursal');
     }
 
-    const lastGuia = await this.prisma.guiaDespacho.findFirst({
-      orderBy: { folio: 'desc' },
-    });
-    const folio = (lastGuia?.folio ?? 0) + 1;
+    if (new Set(dto.detalles.map((d) => d.itemId)).size !== dto.detalles.length) {
+      throw new BadRequestException('La guía repite un ítem; agrupe las cantidades en una sola línea.');
+    }
 
     return this.prisma.$transaction(async (tx) => {
+      // Correlativo sin huecos ni repetidos: las creaciones concurrentes esperan su turno aquí.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('guias_despacho_folio'))`;
+      const lastGuia = await tx.guiaDespacho.findFirst({ orderBy: { folio: 'desc' } });
+      const folio = (lastGuia?.folio ?? 0) + 1;
+
       for (const d of dto.detalles) {
-        const stock = await tx.stockLocal.findUnique({
-          where: { sucursalId_itemId: { sucursalId: dto.sucursalOrigenId, itemId: d.itemId } },
+        const { count } = await tx.stockLocal.updateMany({
+          where: { sucursalId: dto.sucursalOrigenId, itemId: d.itemId, stockActual: { gte: d.cantidad } },
+          data: { stockActual: { decrement: d.cantidad } },
         });
-        if (!stock || Number(stock.stockActual) < d.cantidad) {
+        if (count !== 1) {
           const item = await tx.item.findUnique({ where: { id: d.itemId } });
           throw new BadRequestException(
             `Stock insuficiente para "${item?.nombre ?? d.itemId}"`,
           );
         }
-        await tx.stockLocal.update({
-          where: { sucursalId_itemId: { sucursalId: dto.sucursalOrigenId, itemId: d.itemId } },
-          data: { stockActual: { decrement: d.cantidad } },
-        });
       }
 
       return tx.guiaDespacho.create({
@@ -71,53 +73,51 @@ export class GuiasDespachoService {
   }
 
   async recibir(id: string) {
-    const guia = await this.findOne(id);
-    if (guia.estado !== 'PENDIENTE' && guia.estado !== 'EN_TRANSITO') {
-      throw new BadRequestException('La guía ya fue recibida o anulada');
-    }
-
     return this.prisma.$transaction(async (tx) => {
-      for (const d of guia.detalles) {
-        const existing = await tx.stockLocal.findUnique({
-          where: { sucursalId_itemId: { sucursalId: guia.sucursalDestinoId, itemId: d.itemId } },
-        });
-        if (existing) {
-          await tx.stockLocal.update({
-            where: { sucursalId_itemId: { sucursalId: guia.sucursalDestinoId, itemId: d.itemId } },
-            data: { stockActual: { increment: Number(d.cantidad) } },
-          });
-        } else {
-          await tx.stockLocal.create({
-            data: { sucursalId: guia.sucursalDestinoId, itemId: d.itemId, stockActual: Number(d.cantidad) },
-          });
-        }
-      }
-      return tx.guiaDespacho.update({
-        where: { id },
+      // El cambio de estado condicionado es el candado: solo una petición concurrente lo logra.
+      const { count } = await tx.guiaDespacho.updateMany({
+        where: { id, estado: { in: ['PENDIENTE', 'EN_TRANSITO'] } },
         data: { estado: 'RECIBIDO', fechaRecepcion: new Date() },
-        include: INCLUDE_FULL,
       });
+      if (count !== 1) await this.rechazarTransicion(tx, id, 'La guía ya fue recibida o anulada');
+
+      const guia = await tx.guiaDespacho.findUniqueOrThrow({ where: { id }, include: { detalles: true } });
+      for (const d of guia.detalles) {
+        await tx.stockLocal.upsert({
+          where: { sucursalId_itemId: { sucursalId: guia.sucursalDestinoId, itemId: d.itemId } },
+          update: { stockActual: { increment: d.cantidad } },
+          create: { sucursalId: guia.sucursalDestinoId, itemId: d.itemId, stockActual: d.cantidad },
+        });
+      }
+      return tx.guiaDespacho.findUniqueOrThrow({ where: { id }, include: INCLUDE_FULL });
     });
   }
 
   async anular(id: string) {
-    const guia = await this.findOne(id);
-    if (guia.estado === 'RECIBIDO' || guia.estado === 'ANULADO') {
-      throw new BadRequestException('No se puede anular una guía recibida o ya anulada');
-    }
-
     return this.prisma.$transaction(async (tx) => {
+      const { count } = await tx.guiaDespacho.updateMany({
+        where: { id, estado: { in: ['PENDIENTE', 'EN_TRANSITO'] } },
+        data: { estado: 'ANULADO' },
+      });
+      if (count !== 1) {
+        await this.rechazarTransicion(tx, id, 'No se puede anular una guía recibida o ya anulada');
+      }
+
+      const guia = await tx.guiaDespacho.findUniqueOrThrow({ where: { id }, include: { detalles: true } });
       for (const d of guia.detalles) {
-        await tx.stockLocal.update({
+        await tx.stockLocal.upsert({
           where: { sucursalId_itemId: { sucursalId: guia.sucursalOrigenId, itemId: d.itemId } },
-          data: { stockActual: { increment: Number(d.cantidad) } },
+          update: { stockActual: { increment: d.cantidad } },
+          create: { sucursalId: guia.sucursalOrigenId, itemId: d.itemId, stockActual: d.cantidad },
         });
       }
-      return tx.guiaDespacho.update({
-        where: { id },
-        data: { estado: 'ANULADO' },
-        include: INCLUDE_FULL,
-      });
+      return tx.guiaDespacho.findUniqueOrThrow({ where: { id }, include: INCLUDE_FULL });
     });
+  }
+
+  private async rechazarTransicion(tx: Prisma.TransactionClient, id: string, mensaje: string): Promise<never> {
+    const existe = await tx.guiaDespacho.findUnique({ where: { id }, select: { id: true } });
+    if (!existe) throw new NotFoundException('Guía no encontrada');
+    throw new BadRequestException(mensaje);
   }
 }

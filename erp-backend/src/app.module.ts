@@ -1,12 +1,15 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { AuthModule } from './auth/auth.module';
+import { ComprasModule } from './compras/compras.module';
+import { EmpresaModule } from './empresa/empresa.module';
 import { EntidadesModule } from './entidades/entidades.module';
 import { GuiasDespachoModule } from './guias-despacho/guias-despacho.module';
 import { SyncModule } from './sync/sync.module';
 import { ItemsModule } from './items/items.module';
 import { OfertasModule } from './ofertas/ofertas.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { ReportesModule } from './reportes/reportes.module';
 import { StockModule } from './stock/stock.module';
 import { SucursalesModule } from './sucursales/sucursales.module';
 import { TransactionsModule } from './transactions/transactions.module';
@@ -26,6 +29,9 @@ import { UsuariosModule } from './usuarios/usuarios.module';
     OfertasModule,
     GuiasDespachoModule,
     SyncModule,
+    ReportesModule,
+    EmpresaModule,
+    ComprasModule,
   ],
 })
 export class AppModule {}

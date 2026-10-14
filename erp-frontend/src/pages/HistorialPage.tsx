@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useAuth } from '@/context/AuthContext'
+import { useEmpresa } from '@/hooks/useEmpresa'
 import { getTransacciones, getSucursales } from '@/api'
 import { generarPdfBoleta } from '@/utils/pdfBoleta'
 import { useOnlineStatus } from '@/hooks/useOnlineStatus'
@@ -15,7 +16,7 @@ const TIPO_LABEL: Record<string, string> = {
 
 function SiiBadge({ sincronizacion }: { sincronizacion?: string }) {
   if (!sincronizacion || sincronizacion === 'SINCRONIZADO') return null
-  if (sincronizacion === 'PENDIENTE') {
+  if (sincronizacion === 'PENDIENTE' || sincronizacion === 'ENVIANDO') {
     return (
       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-700">
         <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
@@ -41,6 +42,7 @@ const TIPO_COLOR: Record<string, string> = {
 
 export default function HistorialPage() {
   const { user } = useAuth()
+  const empresa = useEmpresa()
   const online = useOnlineStatus()
   const [sucursales, setSucursales] = useState<Sucursal[]>([])
   const [sucursalId, setSucursalId] = useState(user?.sucursalId ?? '')
@@ -90,14 +92,14 @@ export default function HistorialPage() {
   const descargarPdf = (t: Transaccion) => {
     if (!t.detalles?.length) return
     const meta = t.metadatosSii as any
+    if (!empresa) return
     generarPdfBoleta({
       folio: meta?.folio ?? parseInt(t.numeroFactura ?? '0'),
       tipoDoc: meta?.tipoDoc ?? 39,
       fecha: new Date(t.fechaRegistro).toLocaleDateString('es-CL'),
-      rutEmisor: '76.000.000-1',
-      razonSocialEmisor: 'PYMECORE SPA',
-      rutReceptor: t.entidad?.rut ?? '66.666.666-6',
-      razonSocialReceptor: t.entidad?.nombreRazonSocial ?? 'Cliente Final',
+      emisor: empresa,
+      rutReceptor: t.entidad?.rut ?? empresa.rutConsumidorFinal,
+      razonSocialReceptor: t.entidad?.nombreRazonSocial ?? empresa.nombreConsumidorFinal,
       medioPago: t.medioPago,
       sucursal: '',
       detalles: t.detalles.map((d) => ({

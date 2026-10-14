@@ -1,4 +1,4 @@
-import { IsNumber, IsOptional, IsString, Min } from 'class-validator';
+import { IsNumber, IsOptional, IsString, IsUUID, MaxLength, Min } from 'class-validator';
 
 export class AdjustStockDto {
   @IsNumber()
@@ -9,13 +9,18 @@ export class AdjustStockDto {
   @Min(0)
   @IsOptional()
   stockMinimo?: number;
+
+  @IsString()
+  @MaxLength(200)
+  @IsOptional()
+  motivo?: string;
 }
 
 export class CreateStockDto {
-  @IsString()
+  @IsUUID('loose')
   sucursalId: string;
 
-  @IsString()
+  @IsUUID('loose')
   itemId: string;
 
   @IsNumber()

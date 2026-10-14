@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useAuth } from '@/context/AuthContext'
+import { useEmpresa } from '@/hooks/useEmpresa'
 import { getTransacciones, getSucursales, getGuias } from '@/api'
 import { generarPdfBoleta } from '@/utils/pdfBoleta'
 import jsPDF from 'jspdf'
@@ -36,6 +37,7 @@ function generarPdfGuia(guia: GuiaDespacho) {
 
 export default function DocumentosPage() {
   const { user } = useAuth()
+  const empresa = useEmpresa()
   const [sucursales, setSucursales] = useState<Sucursal[]>([])
   const [sucursalId, setSucursalId] = useState(user?.sucursalId ?? '')
   const [transacciones, setTransacciones] = useState<Transaccion[]>([])
@@ -118,14 +120,14 @@ export default function DocumentosPage() {
     const t = doc.raw as Transaccion
     if (!t.detalles?.length) return
     const meta = t.metadatosSii as any
+    if (!empresa) return
     generarPdfBoleta({
       folio: meta?.folio ?? parseInt(t.numeroFactura ?? '0'),
       tipoDoc: doc.tipo === 'NOTA_CREDITO' ? 61 : doc.tipo === 'FACTURA' ? 33 : 39,
       fecha: new Date(t.fechaRegistro).toLocaleDateString('es-CL'),
-      rutEmisor: '76.000.000-1',
-      razonSocialEmisor: 'PYMECORE SPA',
-      rutReceptor: t.entidad?.rut ?? '66.666.666-6',
-      razonSocialReceptor: t.entidad?.nombreRazonSocial ?? 'Cliente Final',
+      emisor: empresa,
+      rutReceptor: t.entidad?.rut ?? empresa.rutConsumidorFinal,
+      razonSocialReceptor: t.entidad?.nombreRazonSocial ?? empresa.nombreConsumidorFinal,
       medioPago: t.medioPago,
       sucursal: '',
       detalles: t.detalles.map((d) => ({

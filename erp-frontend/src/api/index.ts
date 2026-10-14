@@ -1,5 +1,5 @@
 import { api } from './client'
-import type { Entidad, GuiaDespacho, Item, Oferta, StockLocal, Sucursal, Transaccion, Usuario } from '@/types'
+import type { DashboardReporte, DteRecibido, Empresa, Entidad, OrdenCompra, UnidadMedida, GuiaDespacho, Item, Oferta, StockLocal, Sucursal, Transaccion, Usuario } from '@/types'
 
 // Auth
 export const login = (username: string, password: string) =>
@@ -79,22 +79,27 @@ export const getTransaccion = (id: string) =>
 export const getTransaccionByFolio = (folio: string) =>
   api.get<Transaccion>(`/transactions/folio/${encodeURIComponent(folio)}`)
 
-export const createTransaccion = (data: {
-  sucursalId: string
-  usuarioId: string
-  entidadId?: string
-  tipoTransaccion: string
-  medioPago?: string
-  descuentoGlobal?: number
-  rutReceptor?: string
-  razonSocialReceptor?: string
-  tipoDocumento?: number
-  transaccionOrigenId?: string
-  tipoDevolucion?: string
-  observaciones?: string
-  motivoMerma?: string
-  detalles: { itemId: string; cantidad: number; precioUnitario: number }[]
-}) => api.post<Transaccion>('/transactions', data)
+export const createTransaccion = (
+  data: {
+    sucursalId: string
+    entidadId?: string
+    tipoTransaccion: string
+    medioPago?: string
+    descuentoGlobal?: number
+    rutReceptor?: string
+    razonSocialReceptor?: string
+    tipoDocumento?: number
+    transaccionOrigenId?: string
+    tipoDevolucion?: string
+    observaciones?: string
+    motivoMerma?: string
+    detalles: { itemId: string; cantidad: number; precioUnitario?: number }[]
+  },
+  idempotencyKey?: string,
+) =>
+  api.post<Transaccion>('/transactions', data, {
+    headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : undefined,
+  })
 
 // Usuarios
 export const getUsuarios = () => api.get<Usuario[]>('/usuarios')
@@ -165,3 +170,71 @@ export const ejecutarSync = (sucursalId?: string) =>
     `/sync/ejecutar${sucursalId ? `?sucursalId=${sucursalId}` : ''}`,
     {}
   )
+
+// Reportes
+export const getDashboard = (params: {
+  desde: string
+  hasta: string
+  granularidad: 'dia' | 'semana' | 'mes'
+  sucursalId?: string
+}) => api.get<DashboardReporte>('/reportes/dashboard', { params })
+
+// Empresa y catálogos
+export const getEmpresa = () => api.get<Empresa>('/empresa')
+
+export const updateEmpresa = (data: Partial<Omit<Empresa, 'id' | 'tasaIva'>> & { tasaIva?: number }) =>
+  api.patch<Empresa>('/empresa', data)
+
+export const getUnidades = () => api.get<UnidadMedida[]>('/unidades')
+
+export const createUnidad = (data: UnidadMedida) => api.post<UnidadMedida>('/unidades', data)
+
+// Compras
+export const getProveedores = () => api.get<Entidad[]>('/entidades?tipo=PROVEEDOR')
+
+export const getOrdenesCompra = (params: { sucursalId?: string; estado?: string } = {}) =>
+  api.get<OrdenCompra[]>('/compras/ordenes', { params })
+
+export const getOrdenCompra = (id: string) => api.get<OrdenCompra>(`/compras/ordenes/${id}`)
+
+export const createOrdenCompra = (data: {
+  proveedorId: string
+  sucursalId: string
+  fechaEntrega?: string
+  notas?: string
+  detalles: { itemId: string; cantidad: number; costoUnitario: number }[]
+}) => api.post<OrdenCompra>('/compras/ordenes', data)
+
+export const recibirOrdenCompra = (id: string, data: {
+  guiaDespacho?: string
+  detalles: { detalleId: string; cantidad: number }[]
+}) => api.post(`/compras/ordenes/${id}/recepciones`, data)
+
+export const facturarOrdenCompra = (id: string, data: {
+  dteId?: string
+  folio: string
+  fechaEmision: string
+  fechaVencimiento?: string
+  montoTotal?: number
+  detalles: { detalleId: string; cantidad: number; costoUnitario: number }[]
+}) => api.post(`/compras/ordenes/${id}/facturas`, data)
+
+export const cerrarOrdenCompra = (id: string) => api.patch(`/compras/ordenes/${id}/cerrar`, {})
+
+export const anularOrdenCompra = (id: string) => api.patch(`/compras/ordenes/${id}/anular`, {})
+
+export const anularRecepcionCompra = (id: string) => api.patch(`/compras/recepciones/${id}/anular`, {})
+
+export const anularFacturaCompra = (id: string) => api.patch(`/compras/facturas/${id}/anular`, {})
+
+// DTE recibidos
+export const importarDte = (xml: string) => api.post<DteRecibido>('/compras/dte', { xml })
+
+export const getDtes = (estado?: string) =>
+  api.get<DteRecibido[]>('/compras/dte', { params: estado ? { estado } : undefined })
+
+export const registrarGastoDte = (id: string, data: { categoria: string; descripcion?: string }) =>
+  api.post<DteRecibido>(`/compras/dte/${id}/gasto`, data)
+
+export const descartarDte = (id: string, motivo: string) =>
+  api.patch<DteRecibido>(`/compras/dte/${id}/descartar`, { motivo })

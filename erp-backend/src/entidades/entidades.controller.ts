@@ -1,5 +1,6 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { ParseLooseUuidPipe } from '../utils/parse-uuid.pipe';
 import { TipoEntidad } from '@prisma/client';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CreateEntidadDto } from './dto/create-entidad.dto';
@@ -35,21 +36,21 @@ export class EntidadesController {
 
   @Get(':id')
   @ApiOperation({ summary: 'Obtener entidad por ID' })
-  findOne(@Param('id') id: string) {
+  findOne(@Param('id', ParseLooseUuidPipe) id: string) {
     return this.service.findOne(id);
   }
 
   @Patch(':id')
   @Roles('Administrador', 'Encargado')
   @ApiOperation({ summary: 'Actualizar cliente o proveedor' })
-  update(@Param('id') id: string, @Body() dto: UpdateEntidadDto) {
+  update(@Param('id', ParseLooseUuidPipe) id: string, @Body() dto: UpdateEntidadDto) {
     return this.service.update(id, dto);
   }
 
   @Delete(':id')
   @Roles('Administrador')
   @ApiOperation({ summary: 'Desactivar entidad (soft delete)' })
-  remove(@Param('id') id: string) {
+  remove(@Param('id', ParseLooseUuidPipe) id: string) {
     return this.service.remove(id);
   }
 }

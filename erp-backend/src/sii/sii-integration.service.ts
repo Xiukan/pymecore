@@ -6,17 +6,38 @@ import * as forge from 'node-forge';
 import { SignedXml } from 'xml-crypto';
 import { DOMParser, XMLSerializer } from '@xmldom/xmldom';
 
+export interface Emisor {
+  rut: string;
+  razonSocial: string;
+  giro: string;
+  direccion: string;
+  comuna: string;
+}
+
 export interface DteData {
   folio: number;
   tipoDoc: number;
-  rutEmisor: string;
+  emisor: Emisor;
   rutReceptor: string;
   razonSocialReceptor: string;
+  direccionReceptor?: string | null;
   fechaEmision: string;
   montoTotal: number;
+  /** Desglose del total (precios con IVA incluido). */
+  montoNeto?: number;
+  iva?: number;
   primerItem: string;
   detalles: { nombre: string; cantidad: number; precio: number; subtotal: number }[];
 }
+
+/** Texto que viene de usuarios o del catálogo: sin escapar rompería el XML o inyectaría nodos. */
+const xml = (valor: string | number) =>
+  String(valor)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
 
 export interface DteResult {
   folio: number;
@@ -26,14 +47,14 @@ export interface DteResult {
   montoTotal: number;
   xmlFirmado: string;
   xmlBase64: string;
+  /** true cuando no se pudo firmar y el XML es un sustituto: no es un DTE válido. */
+  esMock?: boolean;
 }
 
 @Injectable()
 export class SiiIntegrationService {
   private readonly logger = new Logger(SiiIntegrationService.name);
   private readonly certsDir = path.join(process.cwd(), 'sii-certs');
-  private readonly rutEmisor = '76.000.000-1';
-  private readonly p12Password = 'tesis123';
 
   emitirDTE(datos: DteData): DteResult {
     try {
@@ -47,7 +68,7 @@ export class SiiIntegrationService {
       return {
         folio: datos.folio,
         tipoDoc: datos.tipoDoc,
-        rutEmisor: datos.rutEmisor,
+        rutEmisor: datos.emisor.rut,
         fechaEmision: datos.fechaEmision,
         montoTotal: datos.montoTotal,
         xmlFirmado,
@@ -87,14 +108,14 @@ export class SiiIntegrationService {
 
     const dd =
       `<DD>` +
-      `<RE>${datos.rutEmisor}</RE>` +
+      `<RE>${xml(datos.emisor.rut)}</RE>` +
       `<TD>${datos.tipoDoc}</TD>` +
       `<F>${datos.folio}</F>` +
       `<FE>${datos.fechaEmision}</FE>` +
-      `<RR>${datos.rutReceptor}</RR>` +
-      `<RSR>${datos.razonSocialReceptor.substring(0, 40)}</RSR>` +
+      `<RR>${xml(datos.rutReceptor)}</RR>` +
+      `<RSR>${xml(datos.razonSocialReceptor.substring(0, 40))}</RSR>` +
       `<MNT>${Math.round(datos.montoTotal)}</MNT>` +
-      `<IT1>${datos.primerItem.substring(0, 40)}</IT1>` +
+      `<IT1>${xml(datos.primerItem.substring(0, 40))}</IT1>` +
       daXml +
       `<TSTED>${tsted}</TSTED>` +
       `</DD>`;
@@ -115,7 +136,7 @@ export class SiiIntegrationService {
         (d, i) =>
           `<Detalle>` +
           `<NroLinDet>${i + 1}</NroLinDet>` +
-          `<NmbItem>${d.nombre}</NmbItem>` +
+          `<NmbItem>${xml(d.nombre)}</NmbItem>` +
           `<QtyItem>${d.cantidad}</QtyItem>` +
           `<PrcItem>${Math.round(d.precio)}</PrcItem>` +
           `<MntItem>${Math.round(d.subtotal)}</MntItem>` +
@@ -128,9 +149,16 @@ export class SiiIntegrationService {
       `<Documento ID="${id}">` +
       `<Encabezado>` +
       `<IdDoc><TipoDTE>${datos.tipoDoc}</TipoDTE><Folio>${datos.folio}</Folio><FchEmis>${datos.fechaEmision}</FchEmis></IdDoc>` +
-      `<Emisor><RUTEmisor>${datos.rutEmisor}</RUTEmisor><RznSoc>EMPRESA PRUEBA SPA</RznSoc><Giro>TECNOLOGIA</Giro><DirOrigen>AV. TESIS 123</DirOrigen><CmnaOrigen>VILLA ALEGRE</CmnaOrigen></Emisor>` +
-      `<Receptor><RUTRecep>${datos.rutReceptor}</RUTRecep><RznSocRecep>${datos.razonSocialReceptor}</RznSocRecep><DirRecep>DIR</DirRecep><CmnaRecep>CMNA</CmnaRecep></Receptor>` +
-      `<Totales><MntTotal>${Math.round(datos.montoTotal)}</MntTotal></Totales>` +
+      `<Emisor><RUTEmisor>${xml(datos.emisor.rut)}</RUTEmisor><RznSoc>${xml(datos.emisor.razonSocial)}</RznSoc>` +
+      `<Giro>${xml(datos.emisor.giro)}</Giro><DirOrigen>${xml(datos.emisor.direccion)}</DirOrigen>` +
+      `<CmnaOrigen>${xml(datos.emisor.comuna)}</CmnaOrigen></Emisor>` +
+      `<Receptor><RUTRecep>${xml(datos.rutReceptor)}</RUTRecep><RznSocRecep>${xml(datos.razonSocialReceptor)}</RznSocRecep>` +
+      (datos.direccionReceptor ? `<DirRecep>${xml(datos.direccionReceptor)}</DirRecep>` : '') +
+      `</Receptor>` +
+      `<Totales>` +
+      (datos.montoNeto !== undefined ? `<MntNeto>${Math.round(datos.montoNeto)}</MntNeto>` : '') +
+      (datos.iva !== undefined ? `<IVA>${Math.round(datos.iva)}</IVA>` : '') +
+      `<MntTotal>${Math.round(datos.montoTotal)}</MntTotal></Totales>` +
       `</Encabezado>` +
       detalles +
       tedXml +
@@ -145,7 +173,9 @@ export class SiiIntegrationService {
     const p12Asn1 = forge.asn1.fromDer(
       forge.util.createBuffer(p12Der.toString('binary')),
     );
-    const p12 = forge.pkcs12.pkcs12FromAsn1(p12Asn1, this.p12Password);
+    const password = process.env.SII_P12_PASSWORD;
+    if (!password) throw new Error('Falta SII_P12_PASSWORD');
+    const p12 = forge.pkcs12.pkcs12FromAsn1(p12Asn1, password);
 
     const keyBags = p12.getBags({ bagType: forge.pki.oids.pkcs8ShroudedKeyBag });
     const keyBag = keyBags[forge.pki.oids.pkcs8ShroudedKeyBag]?.[0];
@@ -196,11 +226,12 @@ export class SiiIntegrationService {
     return {
       folio: datos.folio,
       tipoDoc: datos.tipoDoc,
-      rutEmisor: datos.rutEmisor,
+      rutEmisor: datos.emisor.rut,
       fechaEmision: datos.fechaEmision,
       montoTotal: datos.montoTotal,
       xmlFirmado: mockXml,
       xmlBase64: Buffer.from(mockXml).toString('base64'),
+      esMock: true,
     };
   }
 }

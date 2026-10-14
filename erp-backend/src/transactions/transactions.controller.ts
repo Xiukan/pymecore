@@ -1,6 +1,9 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, ForbiddenException, Get, Headers, Param, Post, Query, Request } from '@nestjs/common';
+import { TipoTransaccion } from '@prisma/client';
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { CheckSucursal } from '../auth/decorators/check-sucursal.decorator';
+import { exigirSucursal } from '../auth/sucursal-scope';
+import { ParseLooseUuidPipe } from '../utils/parse-uuid.pipe';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CreateTransactionDto } from './dto/create-transaction.dto';
 import { TransactionsService } from './transactions.service';
@@ -14,8 +17,15 @@ export class TransactionsController {
   @Post()
   @CheckSucursal('body')
   @ApiOperation({ summary: 'Registrar venta, compra o merma (descuenta stock atómicamente)' })
-  create(@Body() dto: CreateTransactionDto) {
-    return this.service.create(dto);
+  create(
+    @Body() dto: CreateTransactionDto,
+    @Request() req: any,
+    @Headers('idempotency-key') clave?: string,
+  ) {
+    if (dto.tipoTransaccion === TipoTransaccion.MERMA && !['Administrador', 'Encargado'].includes(req.user.rol)) {
+      throw new ForbiddenException('Solo Administrador o Encargado registran mermas.');
+    }
+    return this.service.create(dto, req.user.id, clave);
   }
 
   @Get()
@@ -28,14 +38,18 @@ export class TransactionsController {
 
   @Get('folio/:folio')
   @ApiOperation({ summary: 'Buscar transacción por número de folio/boleta' })
-  findByFolio(@Param('folio') folio: string) {
-    return this.service.findByFolio(folio);
+  async findByFolio(@Param('folio') folio: string, @Request() req: any) {
+    const tx = await this.service.findByFolio(folio);
+    exigirSucursal(req.user, tx.sucursalId);
+    return tx;
   }
 
   @Get(':id')
   @Roles('Administrador', 'Encargado')
   @ApiOperation({ summary: 'Detalle de una transacción' })
-  findOne(@Param('id') id: string) {
-    return this.service.findOne(id);
+  async findOne(@Param('id', ParseLooseUuidPipe) id: string, @Request() req: any) {
+    const tx = await this.service.findOne(id);
+    exigirSucursal(req.user, tx.sucursalId);
+    return tx;
   }
 }

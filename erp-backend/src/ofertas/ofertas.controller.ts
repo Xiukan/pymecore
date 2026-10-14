@@ -1,5 +1,6 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ParseLooseUuidPipe } from '../utils/parse-uuid.pipe';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CreateOfertaDto, UpdateOfertaDto } from './dto/oferta.dto';
 import { OfertasService } from './ofertas.service';
@@ -32,14 +33,14 @@ export class OfertasController {
   @Patch(':id')
   @Roles('Administrador', 'Encargado')
   @ApiOperation({ summary: 'Actualizar oferta' })
-  update(@Param('id') id: string, @Body() dto: UpdateOfertaDto) {
+  update(@Param('id', ParseLooseUuidPipe) id: string, @Body() dto: UpdateOfertaDto) {
     return this.service.update(id, dto);
   }
 
   @Delete(':id')
   @Roles('Administrador')
   @ApiOperation({ summary: 'Eliminar oferta' })
-  remove(@Param('id') id: string) {
+  remove(@Param('id', ParseLooseUuidPipe) id: string) {
     return this.service.remove(id);
   }
 }

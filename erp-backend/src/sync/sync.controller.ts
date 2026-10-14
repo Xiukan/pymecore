@@ -1,4 +1,5 @@
-import { Controller, Get, Post, Query } from '@nestjs/common';
+import { Controller, Get, Post, Query, Request } from '@nestjs/common';
+import { sucursalDe } from '../auth/sucursal-scope';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { SyncService } from './sync.service';
 
@@ -8,19 +9,19 @@ export class SyncController {
 
   @Get('pendientes')
   @Roles('Administrador', 'Encargado', 'Vendedor')
-  getPendientes(@Query('sucursalId') sucursalId?: string) {
-    return this.syncService.getPendientes(sucursalId);
+  getPendientes(@Request() req: any, @Query('sucursalId') sucursalId?: string) {
+    return this.syncService.getPendientes(sucursalDe(req.user, sucursalId));
   }
 
   @Post('ejecutar')
   @Roles('Administrador', 'Encargado')
-  ejecutar(@Query('sucursalId') sucursalId?: string) {
-    return this.syncService.sincronizar(sucursalId);
+  ejecutar(@Request() req: any, @Query('sucursalId') sucursalId?: string) {
+    return this.syncService.sincronizar(sucursalDe(req.user, sucursalId));
   }
 
   @Post('reintentar-errores')
   @Roles('Administrador', 'Encargado')
-  reintentarErrores(@Query('sucursalId') sucursalId?: string) {
-    return this.syncService.reintentarErrores(sucursalId);
+  reintentarErrores(@Request() req: any, @Query('sucursalId') sucursalId?: string) {
+    return this.syncService.reintentarErrores(sucursalDe(req.user, sucursalId));
   }
 }

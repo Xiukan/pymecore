@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react'
 import { useAuth } from '@/context/AuthContext'
+import { cargarEmpresa, useEmpresa } from '@/hooks/useEmpresa'
 import { getTransaccionByFolio, getSucursales, createTransaccion } from '@/api'
 import { generarPdfBoleta } from '@/utils/pdfBoleta'
 import type { Sucursal, Transaccion } from '@/types'
 
-const MAX_DIAS_CAMBIO = 30
-
 export default function DevolucionesPage() {
   const { user } = useAuth()
+  const empresa = useEmpresa()
   const [sucursales, setSucursales] = useState<Sucursal[]>([])
   const [sucursalId, setSucursalId] = useState(user?.sucursalId ?? '')
   const [folioInput, setFolioInput] = useState('')
@@ -45,8 +45,9 @@ export default function DevolucionesPage() {
       }
       const fechaVenta = new Date(data.fechaRegistro)
       const diasDesde = Math.floor((Date.now() - fechaVenta.getTime()) / 86400000)
-      if (diasDesde > MAX_DIAS_CAMBIO) {
-        setErrorBusqueda(`Plazo de cambio vencido. Han pasado ${diasDesde} días (máximo ${MAX_DIAS_CAMBIO})`)
+      const { diasCambio } = await cargarEmpresa()
+      if (diasDesde > diasCambio) {
+        setErrorBusqueda(`Plazo de cambio vencido. Han pasado ${diasDesde} días (máximo ${diasCambio})`)
         return
       }
       setTransaccion(data)
@@ -70,7 +71,6 @@ export default function DevolucionesPage() {
     try {
       await createTransaccion({
         sucursalId: sucursalId || transaccion.sucursalId,
-        usuarioId: user!.id,
         tipoTransaccion: tipo === 'FALLA' ? 'NOTA_CREDITO' : 'DEVOLUCION',
         medioPago: tipo === 'FALLA' ? transaccion.medioPago : 'NoAplica',
         transaccionOrigenId: transaccion.id,
@@ -97,14 +97,14 @@ export default function DevolucionesPage() {
   const descargarOriginal = () => {
     if (!transaccion?.detalles?.length) return
     const meta = transaccion.metadatosSii as any
+    if (!empresa) return
     generarPdfBoleta({
       folio: meta?.folio ?? parseInt(transaccion.numeroFactura ?? '0'),
       tipoDoc: meta?.tipoDoc ?? 39,
       fecha: new Date(transaccion.fechaRegistro).toLocaleDateString('es-CL'),
-      rutEmisor: '76.000.000-1',
-      razonSocialEmisor: 'PYMECORE SPA',
-      rutReceptor: transaccion.entidad?.rut ?? '66.666.666-6',
-      razonSocialReceptor: transaccion.entidad?.nombreRazonSocial ?? 'Cliente Final',
+      emisor: empresa,
+      rutReceptor: transaccion.entidad?.rut ?? empresa.rutConsumidorFinal,
+      razonSocialReceptor: transaccion.entidad?.nombreRazonSocial ?? empresa.nombreConsumidorFinal,
       medioPago: transaccion.medioPago,
       sucursal: '',
       detalles: transaccion.detalles.map((d) => ({
@@ -133,7 +133,7 @@ export default function DevolucionesPage() {
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 space-y-4">
         <p className="text-sm text-gray-500">
-          Plazo máximo para cambios: <strong>{MAX_DIAS_CAMBIO} días</strong> desde la emisión de la boleta.
+          Plazo máximo para cambios: <strong>{empresa?.diasCambio ?? '—'} días</strong> desde la emisión de la boleta.
         </p>
 
         <div className="flex gap-2">

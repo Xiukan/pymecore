@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useAuth } from '@/context/AuthContext'
-import { getStock, getSucursales, createItem, createStock, adjustStock } from '@/api'
-import type { StockLocal, Sucursal } from '@/types'
+import { getStock, getSucursales, createItem, createStock, adjustStock, getUnidades } from '@/api'
+import { useEmpresa } from '@/hooks/useEmpresa'
+import type { StockLocal, Sucursal, UnidadMedida } from '@/types'
 
-const UNIDADES = ['UN', 'KG', 'LT', 'CJ', 'PAQ', 'M2', 'MT']
 
 type ModalProducto = {
   codigoSku: string
@@ -27,6 +27,8 @@ export default function InventarioPage() {
   const { user } = useAuth()
   const canEdit = user?.rol === 'Administrador' || user?.rol === 'Encargado'
 
+  const empresa = useEmpresa()
+  const [unidades, setUnidades] = useState<UnidadMedida[]>([])
   const [sucursales, setSucursales] = useState<Sucursal[]>([])
   const [sucursalId, setSucursalId] = useState(user?.sucursalId ?? '')
   const [stock, setStock] = useState<StockLocal[]>([])
@@ -37,6 +39,10 @@ export default function InventarioPage() {
   const [modalAjuste, setModalAjuste] = useState<ModalAjuste | null>(null)
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState('')
+
+  useEffect(() => {
+    getUnidades().then((r) => setUnidades(r.data))
+  }, [])
 
   useEffect(() => {
     if (user?.rol === 'Administrador') {
@@ -264,7 +270,7 @@ export default function InventarioPage() {
                     onChange={(e) => setModalProducto({ ...modalProducto, unidadMedida: e.target.value })}
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
-                    {UNIDADES.map((u) => <option key={u}>{u}</option>)}
+                    {unidades.map((u) => <option key={u.codigo} value={u.codigo}>{u.nombre} ({u.codigo})</option>)}
                   </select>
                 </div>
               </div>
@@ -311,7 +317,7 @@ export default function InventarioPage() {
                   onChange={(e) => setModalProducto({ ...modalProducto, afectoIva: e.target.checked })}
                   className="rounded border-gray-300 text-blue-600"
                 />
-                <label htmlFor="afectoIva" className="text-sm text-gray-700">Afecto a IVA (19%)</label>
+                <label htmlFor="afectoIva" className="text-sm text-gray-700">Afecto a IVA ({empresa ? Number(empresa.tasaIva) : '…'}%)</label>
               </div>
 
               <hr className="border-gray-100" />
