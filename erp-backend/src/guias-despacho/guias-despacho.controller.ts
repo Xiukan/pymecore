@@ -14,7 +14,7 @@ export class GuiasDespachoController {
   @Roles('Administrador', 'Encargado')
   @ApiOperation({ summary: 'Crear guía de despacho entre sucursales' })
   create(@Body() dto: CreateGuiaDto, @Request() req: any) {
-    return this.service.create(dto, req.user.sub);
+    return this.service.create(dto, req.user.id);
   }
 
   @Get()

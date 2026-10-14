@@ -76,7 +76,11 @@ export default function VentasPage() {
     getItems().then((r) => setItems(r.data.filter((i) => i.estado === 'Activo')))
     getOfertas(true).then((r) => {
       const map = new Map<string, number>()
-      r.data.forEach((o: Oferta) => map.set(o.itemId, Number(o.precioOferta)))
+      // Misma regla que el backend: si hay varias ofertas vigentes, rige la más baja.
+      r.data.forEach((o: Oferta) => {
+        const precio = Number(o.precioOferta)
+        if (!map.has(o.itemId) || precio < map.get(o.itemId)!) map.set(o.itemId, precio)
+      })
       setOfertaMap(map)
     })
   }, [user])

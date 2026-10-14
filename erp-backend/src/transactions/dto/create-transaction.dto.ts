@@ -1,22 +1,42 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsArray, IsEnum, IsNumber, IsOptional, IsString, IsUUID, Min, ValidateNested } from 'class-validator';
+import {
+  ArrayMaxSize,
+  ArrayMinSize,
+  IsArray,
+  IsEnum,
+  IsIn,
+  IsNumber,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Max,
+  MaxLength,
+  Min,
+  ValidateNested,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 import { MedioPago, TipoDevolucion, TipoTransaccion } from '@prisma/client';
 
 export class CreateDetalleDto {
   @ApiProperty({ example: 'uuid-del-item' })
-  @IsString()
+  @IsUUID('loose')
   itemId: string;
 
   @ApiProperty({ example: 2 })
-  @IsNumber()
+  @IsNumber({ maxDecimalPlaces: 3 })
   @Min(0.001)
+  @Max(1_000_000)
   cantidad: number;
 
-  @ApiProperty({ example: 3490 })
+  @ApiPropertyOptional({
+    example: 3490,
+    description: 'Precio que vio el cliente (IVA incluido). En ventas lo fija el servidor; si difiere se rechaza.',
+  })
   @IsNumber()
   @Min(0)
-  precioUnitario: number;
+  @Max(1_000_000_000)
+  @IsOptional()
+  precioUnitario?: number;
 
   @ApiPropertyOptional({ example: 0 })
   @IsNumber()
@@ -30,12 +50,13 @@ export class CreateTransactionDto {
   @IsString()
   sucursalId: string;
 
-  @ApiProperty({ example: 'uuid-de-usuario' })
+  @ApiPropertyOptional({ description: 'Ignorado: el usuario se toma del token' })
   @IsString()
-  usuarioId: string;
+  @IsOptional()
+  usuarioId?: string;
 
   @ApiPropertyOptional({ example: 'uuid-de-cliente' })
-  @IsString()
+  @IsUUID('loose')
   @IsOptional()
   entidadId?: string;
 
@@ -65,12 +86,12 @@ export class CreateTransactionDto {
   razonSocialReceptor?: string;
 
   @ApiPropertyOptional({ example: 39, description: '39=Boleta, 33=Factura' })
-  @IsNumber()
+  @IsIn([33, 39])
   @IsOptional()
   tipoDocumento?: number;
 
-  @ApiPropertyOptional({ description: 'ID de la transacción original (para devoluciones)' })
-  @IsUUID()
+  @ApiPropertyOptional({ description: 'ID de la venta original (obligatorio en devoluciones y notas de crédito)' })
+  @IsUUID('loose')
   @IsOptional()
   transaccionOrigenId?: string;
 
@@ -81,11 +102,20 @@ export class CreateTransactionDto {
 
   @ApiPropertyOptional()
   @IsString()
+  @MaxLength(300)
   @IsOptional()
   observaciones?: string;
 
+  @ApiPropertyOptional()
+  @IsString()
+  @MaxLength(200)
+  @IsOptional()
+  motivoMerma?: string;
+
   @ApiProperty({ type: [CreateDetalleDto] })
   @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(200)
   @ValidateNested({ each: true })
   @Type(() => CreateDetalleDto)
   detalles: CreateDetalleDto[];

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, Request } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { CheckSucursal } from '../auth/decorators/check-sucursal.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -14,8 +14,8 @@ export class TransactionsController {
   @Post()
   @CheckSucursal('body')
   @ApiOperation({ summary: 'Registrar venta, compra o merma (descuenta stock atómicamente)' })
-  create(@Body() dto: CreateTransactionDto) {
-    return this.service.create(dto);
+  create(@Body() dto: CreateTransactionDto, @Request() req: any) {
+    return this.service.create(dto, req.user.id);
   }
 
   @Get()

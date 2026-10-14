@@ -26,6 +26,8 @@ export interface DteResult {
   montoTotal: number;
   xmlFirmado: string;
   xmlBase64: string;
+  /** true cuando no se pudo firmar y el XML es un sustituto: no es un DTE válido. */
+  esMock?: boolean;
 }
 
 @Injectable()
@@ -33,7 +35,6 @@ export class SiiIntegrationService {
   private readonly logger = new Logger(SiiIntegrationService.name);
   private readonly certsDir = path.join(process.cwd(), 'sii-certs');
   private readonly rutEmisor = '76.000.000-1';
-  private readonly p12Password = 'tesis123';
 
   emitirDTE(datos: DteData): DteResult {
     try {
@@ -145,7 +146,9 @@ export class SiiIntegrationService {
     const p12Asn1 = forge.asn1.fromDer(
       forge.util.createBuffer(p12Der.toString('binary')),
     );
-    const p12 = forge.pkcs12.pkcs12FromAsn1(p12Asn1, this.p12Password);
+    const password = process.env.SII_P12_PASSWORD;
+    if (!password) throw new Error('Falta SII_P12_PASSWORD');
+    const p12 = forge.pkcs12.pkcs12FromAsn1(p12Asn1, password);
 
     const keyBags = p12.getBags({ bagType: forge.pki.oids.pkcs8ShroudedKeyBag });
     const keyBag = keyBags[forge.pki.oids.pkcs8ShroudedKeyBag]?.[0];
@@ -201,6 +204,7 @@ export class SiiIntegrationService {
       montoTotal: datos.montoTotal,
       xmlFirmado: mockXml,
       xmlBase64: Buffer.from(mockXml).toString('base64'),
+      esMock: true,
     };
   }
 }

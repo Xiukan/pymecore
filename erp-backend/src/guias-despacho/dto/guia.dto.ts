@@ -1,8 +1,8 @@
-import { IsArray, IsNumber, IsOptional, IsString, IsUUID, Min, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsNumber, IsOptional, IsString, IsUUID, Min, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class DetalleGuiaDto {
-  @IsUUID()
+  @IsUUID('loose')
   itemId: string;
 
   @IsNumber()
@@ -11,10 +11,10 @@ export class DetalleGuiaDto {
 }
 
 export class CreateGuiaDto {
-  @IsUUID()
+  @IsUUID('loose')
   sucursalOrigenId: string;
 
-  @IsUUID()
+  @IsUUID('loose')
   sucursalDestinoId: string;
 
   @IsString()
@@ -22,6 +22,8 @@ export class CreateGuiaDto {
   notas?: string;
 
   @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(200)
   @ValidateNested({ each: true })
   @Type(() => DetalleGuiaDto)
   detalles: DetalleGuiaDto[];

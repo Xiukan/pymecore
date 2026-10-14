@@ -2,3 +2,6 @@ node_modules
 dist
 .env
 /generated/prisma
+
+# Certificado y CAF del SII: secretos, nunca al repositorio
+sii-certs/

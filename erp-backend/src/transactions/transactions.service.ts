@@ -3,12 +3,26 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { TipoTransaccion } from '@prisma/client';
+import { Item, Prisma, TipoTransaccion } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { SiiIntegrationService } from '../sii/sii-integration.service';
+import { reclamarFolio } from '../utils/folios.util';
+import { calcularDocumento, dec, peso, share, ZERO } from '../utils/money.util';
 import { CreateTransactionDto } from './dto/create-transaction.dto';
 
-const IVA_RATE = 0.19;
+type Tx = Prisma.TransactionClient;
+
+const RETORNOS: TipoTransaccion[] = [TipoTransaccion.DEVOLUCION, TipoTransaccion.NOTA_CREDITO];
+
+interface LineaPreparada {
+  itemId: string;
+  cantidad: Prisma.Decimal;
+  costoUnitario: Prisma.Decimal;
+  precioUnitario: Prisma.Decimal;
+  descuentoLinea: Prisma.Decimal;
+  montoIva: Prisma.Decimal;
+  subtotal: Prisma.Decimal;
+}
 
 @Injectable()
 export class TransactionsService {
@@ -17,177 +31,250 @@ export class TransactionsService {
     private readonly sii: SiiIntegrationService,
   ) {}
 
-  async create(dto: CreateTransactionDto) {
+  async create(dto: CreateTransactionDto, usuarioId: string) {
     const itemIds = dto.detalles.map((d) => d.itemId);
+    if (new Set(itemIds).size !== itemIds.length) {
+      throw new BadRequestException('El documento repite un ítem; agrupe las cantidades en una sola línea.');
+    }
+    const esRetorno = RETORNOS.includes(dto.tipoTransaccion);
+    if (esRetorno && !dto.transaccionOrigenId) {
+      throw new BadRequestException('Las devoluciones y notas de crédito requieren la venta de origen.');
+    }
 
     const items = await this.prisma.item.findMany({
-      where: { id: { in: itemIds }, estado: 'Activo' },
+      where: { id: { in: itemIds }, ...(esRetorno ? {} : { estado: 'Activo' }) },
     });
-
     if (items.length !== itemIds.length) {
       throw new NotFoundException('Uno o más ítems no existen o están inactivos');
     }
-
     const itemMap = new Map(items.map((i) => [i.id, i]));
 
-    const detallesCalculados = dto.detalles.map((d) => {
-      const item = itemMap.get(d.itemId)!;
-      const precio = Number(d.precioUnitario);
-      const descLinea = parseFloat((d.descuentoLinea ?? 0).toFixed(2));
-      const baseLinea = precio * d.cantidad - descLinea;
-      const iva = item.afectoIva ? parseFloat((baseLinea * IVA_RATE).toFixed(2)) : 0;
-      const subtotal = parseFloat((baseLinea + iva).toFixed(2));
-
-      return {
-        itemId: d.itemId,
-        cantidad: d.cantidad,
-        costoUnitario: Number(item.costoPromedio),
-        precioUnitario: precio,
-        montoIva: iva,
-        descuentoLinea: descLinea,
-        subtotal,
-      };
-    });
-
-    const subtotalBruto = detallesCalculados.reduce((acc, d) => acc + d.subtotal, 0);
-    const descGlobal = parseFloat((dto.descuentoGlobal ?? 0).toFixed(2));
-    const montoTotal = parseFloat((subtotalBruto - descGlobal).toFixed(2));
-
     const transaccion = await this.prisma.$transaction(async (tx) => {
-      if (
-        dto.tipoTransaccion === TipoTransaccion.VENTA ||
-        dto.tipoTransaccion === TipoTransaccion.MERMA
-      ) {
-        for (const d of dto.detalles) {
-          const stock = await tx.stockLocal.findUnique({
-            where: { sucursalId_itemId: { sucursalId: dto.sucursalId, itemId: d.itemId } },
-          });
-          if (!stock) throw new NotFoundException(`Sin registro de stock para el ítem ${d.itemId}`);
-          if (Number(stock.stockActual) < d.cantidad) {
-            const item = itemMap.get(d.itemId)!;
-            throw new BadRequestException(
-              `Stock insuficiente para "${item.nombre}". Disponible: ${stock.stockActual}`,
-            );
-          }
-          await tx.stockLocal.update({
-            where: { sucursalId_itemId: { sucursalId: dto.sucursalId, itemId: d.itemId } },
-            data: { stockActual: { decrement: d.cantidad } },
+      const lineas = esRetorno
+        ? await this.prepararRetorno(tx, dto)
+        : await this.prepararDocumento(tx, dto, itemMap);
+
+      if (dto.tipoTransaccion === TipoTransaccion.VENTA || dto.tipoTransaccion === TipoTransaccion.MERMA) {
+        for (const l of lineas) await this.descontarStock(tx, dto.sucursalId, l, itemMap.get(l.itemId)!);
+      }
+      if (esRetorno) {
+        for (const l of lineas) {
+          await tx.stockLocal.upsert({
+            where: { sucursalId_itemId: { sucursalId: dto.sucursalId, itemId: l.itemId } },
+            update: { stockActual: { increment: l.cantidad } },
+            create: { sucursalId: dto.sucursalId, itemId: l.itemId, stockActual: l.cantidad },
           });
         }
       }
 
-      if (
-        dto.tipoTransaccion === TipoTransaccion.DEVOLUCION ||
-        dto.tipoTransaccion === TipoTransaccion.NOTA_CREDITO
-      ) {
-        for (const d of dto.detalles) {
-          const existing = await tx.stockLocal.findUnique({
-            where: { sucursalId_itemId: { sucursalId: dto.sucursalId, itemId: d.itemId } },
-          });
-          if (existing) {
-            await tx.stockLocal.update({
-              where: { sucursalId_itemId: { sucursalId: dto.sucursalId, itemId: d.itemId } },
-              data: { stockActual: { increment: d.cantidad } },
-            });
-          } else {
-            await tx.stockLocal.create({
-              data: { sucursalId: dto.sucursalId, itemId: d.itemId, stockActual: d.cantidad },
-            });
-          }
-        }
-      }
-
-      return tx.transaccion.create({
+      const montoTotal = lineas.reduce((s, l) => s.add(l.subtotal), ZERO);
+      const esVenta = dto.tipoTransaccion === TipoTransaccion.VENTA;
+      const tipoDoc = dto.tipoDocumento ?? 39;
+      const creada = await tx.transaccion.create({
         data: {
           sucursalId: dto.sucursalId,
-          usuarioId: dto.usuarioId,
+          usuarioId,
           entidadId: dto.entidadId,
           tipoTransaccion: dto.tipoTransaccion,
           medioPago: dto.medioPago,
-          descuentoGlobal: descGlobal,
+          descuentoGlobal: esRetorno ? ZERO : peso(dto.descuentoGlobal ?? 0),
           montoTotal,
+          // Una venta queda pendiente de SII hasta que su DTE se envía; nunca nace sincronizada.
+          sincronizacion: esVenta ? 'PENDIENTE' : 'SINCRONIZADO',
           transaccionOrigenId: dto.transaccionOrigenId,
           tipoDevolucion: dto.tipoDevolucion,
           observaciones: dto.observaciones,
-          motivoMerma: (dto as any).motivoMerma,
-          detalles: { createMany: { data: detallesCalculados } },
+          motivoMerma: dto.motivoMerma,
+          detalles: { createMany: { data: lineas } },
         },
         include: { detalles: true },
       });
+      if (!esVenta) return { creada, folio: null as number | null, tipoDoc };
+
+      const folio = await reclamarFolio(tx, tipoDoc, creada.id);
+      if (folio === null) {
+        await tx.transaccion.update({
+          where: { id: creada.id },
+          data: { metadatosSii: { sinFolio: true, tipoDoc } },
+        });
+      } else {
+        await tx.transaccion.update({ where: { id: creada.id }, data: { numeroFactura: String(folio) } });
+      }
+      return { creada, folio, tipoDoc };
     });
 
-    if (dto.tipoTransaccion === TipoTransaccion.VENTA) {
-      const tipoDoc = dto.tipoDocumento ?? 39;
+    const { creada, folio, tipoDoc } = transaccion;
+    if (dto.tipoTransaccion !== TipoTransaccion.VENTA) return creada;
+    if (folio === null) return { ...creada, dte: null, pendiente: true };
 
-      // Reclamar folio del pool atómicamente
-      const folioRow = await this.prisma.folioDisponible.findFirst({
-        where: { tipoDoc, usado: false },
-        orderBy: { numero: 'asc' },
-      });
-
-      if (!folioRow) {
-        // Sin folios disponibles: guardamos con sincronizacion PENDIENTE y folio 0 (se asignará al sincronizar)
-        await this.prisma.transaccion.update({
-          where: { id: transaccion.id },
-          data: { sincronizacion: 'PENDIENTE', metadatosSii: { sinFolio: true, tipoDoc } as any },
-        });
-        return { ...transaccion, dte: null, pendiente: true };
-      }
-
-      await this.prisma.folioDisponible.update({
-        where: { id: folioRow.id },
-        data: { usado: true, usadoEn: new Date(), transaccionId: transaccion.id },
-      });
-
-      const detallesDte = dto.detalles.map((d) => {
-        const item = itemMap.get(d.itemId)!;
-        return {
-          nombre: item.nombre,
-          cantidad: d.cantidad,
+    let dte: Awaited<ReturnType<SiiIntegrationService['emitirDTE']>>;
+    try {
+      dte = this.sii.emitirDTE({
+        folio,
+        tipoDoc,
+        rutEmisor: '76.000.000-1',
+        rutReceptor: dto.rutReceptor ?? '66.666.666-6',
+        razonSocialReceptor: dto.razonSocialReceptor ?? 'CLIENTE FINAL',
+        fechaEmision: new Date().toISOString().substring(0, 10),
+        montoTotal: Number(creada.montoTotal),
+        primerItem: itemMap.get(creada.detalles[0]?.itemId)?.nombre ?? 'Item',
+        detalles: creada.detalles.map((d) => ({
+          nombre: itemMap.get(d.itemId)?.nombre ?? 'Item',
+          cantidad: Number(d.cantidad),
           precio: Number(d.precioUnitario),
-          subtotal: Number(d.precioUnitario) * d.cantidad,
-        };
+          subtotal: Number(d.subtotal),
+        })),
       });
-
-      let dte: any;
-      try {
-        dte = this.sii.emitirDTE({
-          folio: folioRow.numero,
-          tipoDoc,
-          rutEmisor: '76.000.000-1',
-          rutReceptor: dto.rutReceptor ?? '66.666.666-6',
-          razonSocialReceptor: dto.razonSocialReceptor ?? 'CLIENTE FINAL',
-          fechaEmision: new Date().toISOString().substring(0, 10),
-          montoTotal,
-          primerItem: detallesDte[0]?.nombre ?? 'Item',
-          detalles: detallesDte,
-        });
-      } catch {
-        // Sin conexión o falla DTE: marcamos PENDIENTE con folio reservado
-        await this.prisma.transaccion.update({
-          where: { id: transaccion.id },
-          data: {
-            sincronizacion: 'PENDIENTE',
-            numeroFactura: String(folioRow.numero),
-            metadatosSii: { folio: folioRow.numero, tipoDoc, esMock: true, pendienteDte: true } as any,
-          },
-        });
-        return { ...transaccion, dte: null, pendiente: true, folio: folioRow.numero };
-      }
-
+    } catch {
       await this.prisma.transaccion.update({
-        where: { id: transaccion.id },
-        data: {
-          numeroFactura: String(dte.folio),
-          sincronizacion: 'PENDIENTE',
-          metadatosSii: dte as any,
-        },
+        where: { id: creada.id },
+        data: { metadatosSii: { folio, tipoDoc, pendienteDte: true } },
       });
-
-      return { ...transaccion, dte };
+      return { ...creada, numeroFactura: String(folio), dte: null, pendiente: true, folio };
     }
 
-    return transaccion;
+    await this.prisma.transaccion.update({
+      where: { id: creada.id },
+      data: { metadatosSii: dte as any },
+    });
+    return { ...creada, numeroFactura: String(folio), dte };
+  }
+
+  /** Venta: precio vigente del servidor. Merma: valorizada a costo. Compra: precio informado. */
+  private async prepararDocumento(tx: Tx, dto: CreateTransactionDto, itemMap: Map<string, Item>) {
+    const ahora = new Date();
+    const ofertas = await tx.oferta.findMany({
+      where: {
+        itemId: { in: [...itemMap.keys()] },
+        activo: true,
+        fechaInicio: { lte: ahora },
+        fechaFin: { gte: ahora },
+      },
+    });
+    const precioOferta = new Map<string, Prisma.Decimal>();
+    for (const o of ofertas) {
+      const actual = precioOferta.get(o.itemId);
+      if (!actual || o.precioOferta.lt(actual)) precioOferta.set(o.itemId, o.precioOferta);
+    }
+
+    const base = dto.detalles.map((d) => {
+      const item = itemMap.get(d.itemId)!;
+      let precio: Prisma.Decimal;
+      if (dto.tipoTransaccion === TipoTransaccion.VENTA) {
+        precio = precioOferta.get(item.id) ?? item.precioVenta;
+        if (d.precioUnitario !== undefined && !dec(d.precioUnitario).eq(precio)) {
+          throw new BadRequestException(
+            `El precio de "${item.nombre}" cambió a $${precio.toString()}. Actualice el carrito antes de cobrar.`,
+          );
+        }
+      } else if (dto.tipoTransaccion === TipoTransaccion.MERMA) {
+        precio = item.costoPromedio;
+      } else {
+        if (d.precioUnitario === undefined) {
+          throw new BadRequestException(`Indique el precio de compra de "${item.nombre}".`);
+        }
+        precio = dec(d.precioUnitario);
+      }
+      return { item, cantidad: dec(d.cantidad), precio, descuento: dec(d.descuentoLinea ?? 0) };
+    });
+
+    const calculo = this.calcular(
+      base.map((b) => ({
+        cantidad: b.cantidad,
+        precioUnitario: b.precio,
+        descuentoLinea: b.descuento,
+        afectoIva: dto.tipoTransaccion !== TipoTransaccion.MERMA && b.item.afectoIva,
+      })),
+      dto.descuentoGlobal ?? 0,
+    );
+    if (dto.tipoTransaccion === TipoTransaccion.VENTA && calculo.montoTotal.lte(0)) {
+      throw new BadRequestException('El total de la venta debe ser mayor a cero.');
+    }
+    return base.map<LineaPreparada>((b, i) => ({
+      itemId: b.item.id,
+      cantidad: b.cantidad,
+      costoUnitario: b.item.costoPromedio,
+      precioUnitario: b.precio,
+      ...calculo.detalle[i],
+    }));
+  }
+
+  /** Devolución / NC: contra líneas reales de la venta, sin superar lo vendido ni su monto. */
+  private async prepararRetorno(tx: Tx, dto: CreateTransactionDto) {
+    // Serializa los retornos concurrentes de una misma venta.
+    await tx.$queryRaw`SELECT id FROM transacciones WHERE id = ${dto.transaccionOrigenId}::uuid FOR UPDATE`;
+    const origen = await tx.transaccion.findUnique({
+      where: { id: dto.transaccionOrigenId },
+      include: { detalles: true },
+    });
+    if (!origen || origen.tipoTransaccion !== TipoTransaccion.VENTA || origen.estado !== 'Activa') {
+      throw new BadRequestException('La venta de origen no existe o no está activa.');
+    }
+    if (origen.sucursalId !== dto.sucursalId) {
+      throw new BadRequestException('La devolución debe registrarse en la sucursal de la venta.');
+    }
+
+    const previos = await tx.transaccionDetalle.groupBy({
+      by: ['itemId'],
+      where: {
+        transaccion: {
+          transaccionOrigenId: origen.id,
+          estado: 'Activa',
+          tipoTransaccion: { in: RETORNOS },
+        },
+      },
+      _sum: { cantidad: true, subtotal: true, montoIva: true },
+    });
+    const devuelto = new Map(previos.map((p) => [p.itemId, p._sum]));
+
+    return dto.detalles.map<LineaPreparada>((d) => {
+      const linea = origen.detalles.find((o) => o.itemId === d.itemId);
+      if (!linea) throw new BadRequestException('Hay ítems que no pertenecen a la venta de origen.');
+      const ya = devuelto.get(d.itemId);
+      const qtyRestante = linea.cantidad.sub(ya?.cantidad ?? ZERO);
+      const cantidad = dec(d.cantidad);
+      if (cantidad.gt(qtyRestante)) {
+        throw new BadRequestException(
+          `No se puede devolver ${cantidad} unidades: vendidas ${linea.cantidad}, ya devueltas ${ya?.cantidad ?? 0}.`,
+        );
+      }
+      const subtotalRestante = linea.subtotal.sub(ya?.subtotal ?? ZERO);
+      const ivaRestante = linea.montoIva.sub(ya?.montoIva ?? ZERO);
+      return {
+        itemId: linea.itemId,
+        cantidad,
+        costoUnitario: linea.costoUnitario,
+        precioUnitario: linea.precioUnitario,
+        descuentoLinea: share(linea.descuentoLinea, cantidad, linea.cantidad),
+        montoIva: share(ivaRestante, cantidad, qtyRestante),
+        subtotal: share(subtotalRestante, cantidad, qtyRestante),
+      };
+    });
+  }
+
+  private calcular(...args: Parameters<typeof calcularDocumento>) {
+    try {
+      return calcularDocumento(...args);
+    } catch (err) {
+      if (err instanceof RangeError) throw new BadRequestException(err.message);
+      throw err;
+    }
+  }
+
+  /** Descuento condicionado: nunca deja stock negativo aunque lleguen ventas simultáneas. */
+  private async descontarStock(tx: Tx, sucursalId: string, linea: LineaPreparada, item: Item) {
+    const { count } = await tx.stockLocal.updateMany({
+      where: { sucursalId, itemId: linea.itemId, stockActual: { gte: linea.cantidad } },
+      data: { stockActual: { decrement: linea.cantidad } },
+    });
+    if (count === 1) return;
+    const stock = await tx.stockLocal.findUnique({
+      where: { sucursalId_itemId: { sucursalId, itemId: linea.itemId } },
+    });
+    if (!stock) throw new NotFoundException(`Sin registro de stock para el ítem ${item.nombre}`);
+    throw new BadRequestException(
+      `Stock insuficiente para "${item.nombre}". Disponible: ${stock.stockActual}`,
+    );
   }
 
   findAll(sucursalId?: string) {
