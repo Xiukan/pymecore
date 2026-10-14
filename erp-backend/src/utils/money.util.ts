@@ -7,7 +7,6 @@ const D = Prisma.Decimal;
 export type Decimal = Prisma.Decimal;
 
 export const ZERO = new D(0);
-export const IVA_RATE = new D('0.19');
 
 export const dec = (v: Prisma.Decimal.Value) => new D(v);
 export const peso = (v: Prisma.Decimal.Value) => new D(v).toDecimalPlaces(0, D.ROUND_HALF_UP);
@@ -47,7 +46,12 @@ export interface LineaCalculada {
  * Totales de un documento con precios brutos. El descuento global se reparte entre
  * las líneas antes de desglosar el IVA, así las líneas siempre suman el total.
  */
-export function calcularDocumento(lineas: LineaBruta[], descuentoGlobal: Prisma.Decimal.Value = 0) {
+export function calcularDocumento(
+  lineas: LineaBruta[],
+  descuentoGlobal: Prisma.Decimal.Value,
+  tasaIvaPct: Prisma.Decimal.Value,
+) {
+  const tasa = new D(tasaIvaPct).div(100);
   const brutos = lineas.map((l) => {
     const bruto = peso(new D(l.cantidad).mul(l.precioUnitario));
     const descuento = peso(l.descuentoLinea);
@@ -63,7 +67,7 @@ export function calcularDocumento(lineas: LineaBruta[], descuentoGlobal: Prisma.
 
   const afectos = totales.map((t, i) => (lineas[i].afectoIva ? t : ZERO));
   const totalAfecto = afectos.reduce((s, t) => s.add(t), ZERO);
-  const neto = peso(totalAfecto.div(IVA_RATE.add(1)));
+  const neto = peso(totalAfecto.div(tasa.add(1)));
   const ivas = allocate(totalAfecto.sub(neto), afectos);
 
   const detalle: LineaCalculada[] = totales.map((t, i) => ({
@@ -78,4 +82,22 @@ export function calcularDocumento(lineas: LineaBruta[], descuentoGlobal: Prisma.
     montoTotal: totales.reduce((s, t) => s.add(t), ZERO),
     descuentoGlobal: global,
   };
+}
+
+export interface LineaNeta {
+  cantidad: Prisma.Decimal.Value;
+  costoUnitario: Prisma.Decimal.Value;
+  afectoIva: boolean;
+}
+
+/**
+ * Documentos de compra: costos netos y el IVA se suma sobre el neto afecto del documento
+ * (no por línea), como exige la factura electrónica.
+ */
+export function calcularDocumentoNeto(lineas: LineaNeta[], tasaIvaPct: Prisma.Decimal.Value) {
+  const subtotales = lineas.map((l) => peso(new D(l.cantidad).mul(l.costoUnitario)));
+  const montoNeto = subtotales.reduce((s, t) => s.add(t), ZERO);
+  const netoAfecto = subtotales.reduce((s, t, i) => (lineas[i].afectoIva ? s.add(t) : s), ZERO);
+  const montoIva = peso(netoAfecto.mul(tasaIvaPct).div(100));
+  return { subtotales, montoNeto, montoIva, montoTotal: montoNeto.add(montoIva) };
 }

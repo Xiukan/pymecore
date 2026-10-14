@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client'
-import { allocate, calcularDocumento, peso } from './money.util'
+import { allocate, calcularDocumento, calcularDocumentoNeto, peso } from './money.util'
 
 const D = (v: Prisma.Decimal.Value) => new Prisma.Decimal(v)
 
@@ -22,6 +22,7 @@ describe('money.util', () => {
         { cantidad: 2, precioUnitario: 500, descuentoLinea: 0, afectoIva: false },
       ],
       760,
+      19,
     )
     const suma = doc.detalle.reduce((s, l) => s.add(l.subtotal), D(0))
     const ivas = doc.detalle.reduce((s, l) => s.add(l.montoIva), D(0))
@@ -35,7 +36,26 @@ describe('money.util', () => {
 
   it('rechaza descuentos que dejan montos negativos', () => {
     const linea = { cantidad: 1, precioUnitario: 1000, descuentoLinea: 0, afectoIva: true }
-    expect(() => calcularDocumento([linea], 1001)).toThrow(RangeError)
-    expect(() => calcularDocumento([{ ...linea, descuentoLinea: 1001 }])).toThrow(RangeError)
+    expect(() => calcularDocumento([linea], 1001, 19)).toThrow(RangeError)
+    expect(() => calcularDocumento([{ ...linea, descuentoLinea: 1001 }], 0, 19)).toThrow(RangeError)
+  })
+
+  it('la tasa de IVA viene de la configuración', () => {
+    const linea = { cantidad: 1, precioUnitario: 1100, descuentoLinea: 0, afectoIva: true }
+    expect(calcularDocumento([linea], 0, 10).montoIva).toEqual(D(100))
+  })
+
+  it('compras: IVA sobre el neto afecto del documento, no por línea', () => {
+    const doc = calcularDocumentoNeto(
+      [
+        { cantidad: 3, costoUnitario: '333.33', afectoIva: true },
+        { cantidad: 2, costoUnitario: 500, afectoIva: false },
+      ],
+      19,
+    )
+    expect(doc.subtotales).toEqual([D(1000), D(1000)])
+    expect(doc.montoNeto).toEqual(D(2000))
+    expect(doc.montoIva).toEqual(D(190))
+    expect(doc.montoTotal).toEqual(D(2190))
   })
 })

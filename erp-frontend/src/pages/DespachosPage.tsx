@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
 import { useAuth } from '@/context/AuthContext'
+import { useEmpresa } from '@/hooks/useEmpresa'
 import { getGuias, getGuia, createGuia, recibirGuia, anularGuia, getSucursales, getItems, getStock } from '@/api'
 import { generarPdfBoleta } from '@/utils/pdfBoleta'
 import jsPDF from 'jspdf'
-import type { GuiaDespacho, Item, Sucursal } from '@/types'
+import type { Empresa, GuiaDespacho, Item, Sucursal } from '@/types'
 
 type LineaGuia = { itemId: string; cantidad: string; stockDisponible: number; nombre: string }
 
@@ -14,15 +15,19 @@ const ESTADO_COLOR: Record<string, string> = {
   ANULADO: 'bg-red-100 text-red-700',
 }
 
-function generarPdfGuia(guia: GuiaDespacho) {
+function generarPdfGuia(guia: GuiaDespacho, empresa: Empresa) {
   const doc = new jsPDF({ unit: 'mm', format: 'a5' })
   const W = 148
   let y = 10
 
   doc.setFontSize(14)
   doc.setFont('helvetica', 'bold')
-  doc.text('PYMECORE', W / 2, y, { align: 'center' })
-  y += 6
+  doc.text(empresa.razonSocial, W / 2, y, { align: 'center' })
+  y += 5
+  doc.setFontSize(8)
+  doc.setFont('helvetica', 'normal')
+  doc.text(`RUT ${empresa.rut} · ${empresa.direccion}, ${empresa.comuna}`, W / 2, y, { align: 'center' })
+  y += 5
   doc.setFontSize(10)
   doc.setFont('helvetica', 'normal')
   doc.text('GUÍA DE DESPACHO ELECTRÓNICA', W / 2, y, { align: 'center' })
@@ -70,6 +75,7 @@ function generarPdfGuia(guia: GuiaDespacho) {
 
 export default function DespachosPage() {
   const { user } = useAuth()
+  const empresa = useEmpresa()
   const [sucursales, setSucursales] = useState<Sucursal[]>([])
   const [guias, setGuias] = useState<GuiaDespacho[]>([])
   const [items, setItems] = useState<Item[]>([])
@@ -225,7 +231,7 @@ export default function DespachosPage() {
                   </td>
                   <td className="px-4 py-3 flex gap-2">
                     <button onClick={() => setVerModal(g)} className="text-xs text-blue-600 hover:underline">Ver</button>
-                    <button onClick={() => generarPdfGuia(g)} className="text-xs text-gray-500 hover:underline">PDF</button>
+                    <button onClick={() => empresa && generarPdfGuia(g, empresa)} className="text-xs text-gray-500 hover:underline">PDF</button>
                     {g.estado === 'PENDIENTE' && (
                       <button onClick={() => accionGuia(g.id, 'recibir')} className="text-xs text-green-600 hover:underline">Recibir</button>
                     )}
@@ -275,7 +281,7 @@ export default function DespachosPage() {
               </table>
             </div>
             <div className="px-6 py-4 border-t flex justify-end gap-3">
-              <button onClick={() => generarPdfGuia(verModal)} className="bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-2 rounded-lg">Descargar PDF</button>
+              <button onClick={() => empresa && generarPdfGuia(verModal, empresa)} className="bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-2 rounded-lg">Descargar PDF</button>
               <button onClick={() => setVerModal(null)} className="text-sm text-gray-600 px-4 py-2">Cerrar</button>
             </div>
           </div>

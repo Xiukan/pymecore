@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { AuthModule } from './auth/auth.module';
+import { ComprasModule } from './compras/compras.module';
+import { EmpresaModule } from './empresa/empresa.module';
 import { EntidadesModule } from './entidades/entidades.module';
 import { GuiasDespachoModule } from './guias-despacho/guias-despacho.module';
 import { SyncModule } from './sync/sync.module';
@@ -28,6 +30,8 @@ import { UsuariosModule } from './usuarios/usuarios.module';
     GuiasDespachoModule,
     SyncModule,
     ReportesModule,
+    EmpresaModule,
+    ComprasModule,
   ],
 })
 export class AppModule {}

@@ -1,5 +1,5 @@
 import { api } from './client'
-import type { DashboardReporte, Entidad, GuiaDespacho, Item, Oferta, StockLocal, Sucursal, Transaccion, Usuario } from '@/types'
+import type { DashboardReporte, Empresa, Entidad, OrdenCompra, UnidadMedida, GuiaDespacho, Item, Oferta, StockLocal, Sucursal, Transaccion, Usuario } from '@/types'
 
 // Auth
 export const login = (username: string, password: string) =>
@@ -178,3 +178,50 @@ export const getDashboard = (params: {
   granularidad: 'dia' | 'semana' | 'mes'
   sucursalId?: string
 }) => api.get<DashboardReporte>('/reportes/dashboard', { params })
+
+// Empresa y catálogos
+export const getEmpresa = () => api.get<Empresa>('/empresa')
+
+export const updateEmpresa = (data: Partial<Omit<Empresa, 'id' | 'tasaIva'>> & { tasaIva?: number }) =>
+  api.patch<Empresa>('/empresa', data)
+
+export const getUnidades = () => api.get<UnidadMedida[]>('/unidades')
+
+export const createUnidad = (data: UnidadMedida) => api.post<UnidadMedida>('/unidades', data)
+
+// Compras
+export const getProveedores = () => api.get<Entidad[]>('/entidades?tipo=PROVEEDOR')
+
+export const getOrdenesCompra = (params: { sucursalId?: string; estado?: string } = {}) =>
+  api.get<OrdenCompra[]>('/compras/ordenes', { params })
+
+export const getOrdenCompra = (id: string) => api.get<OrdenCompra>(`/compras/ordenes/${id}`)
+
+export const createOrdenCompra = (data: {
+  proveedorId: string
+  sucursalId: string
+  fechaEntrega?: string
+  notas?: string
+  detalles: { itemId: string; cantidad: number; costoUnitario: number }[]
+}) => api.post<OrdenCompra>('/compras/ordenes', data)
+
+export const recibirOrdenCompra = (id: string, data: {
+  guiaDespacho?: string
+  detalles: { detalleId: string; cantidad: number }[]
+}) => api.post(`/compras/ordenes/${id}/recepciones`, data)
+
+export const facturarOrdenCompra = (id: string, data: {
+  folio: string
+  fechaEmision: string
+  fechaVencimiento?: string
+  montoTotal?: number
+  detalles: { detalleId: string; cantidad: number; costoUnitario: number }[]
+}) => api.post(`/compras/ordenes/${id}/facturas`, data)
+
+export const cerrarOrdenCompra = (id: string) => api.patch(`/compras/ordenes/${id}/cerrar`, {})
+
+export const anularOrdenCompra = (id: string) => api.patch(`/compras/ordenes/${id}/anular`, {})
+
+export const anularRecepcionCompra = (id: string) => api.patch(`/compras/recepciones/${id}/anular`, {})
+
+export const anularFacturaCompra = (id: string) => api.patch(`/compras/facturas/${id}/anular`, {})

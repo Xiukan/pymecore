@@ -6,12 +6,21 @@ import * as forge from 'node-forge';
 import { SignedXml } from 'xml-crypto';
 import { DOMParser, XMLSerializer } from '@xmldom/xmldom';
 
+export interface Emisor {
+  rut: string;
+  razonSocial: string;
+  giro: string;
+  direccion: string;
+  comuna: string;
+}
+
 export interface DteData {
   folio: number;
   tipoDoc: number;
-  rutEmisor: string;
+  emisor: Emisor;
   rutReceptor: string;
   razonSocialReceptor: string;
+  direccionReceptor?: string | null;
   fechaEmision: string;
   montoTotal: number;
   /** Desglose del total (precios con IVA incluido). */
@@ -46,7 +55,6 @@ export interface DteResult {
 export class SiiIntegrationService {
   private readonly logger = new Logger(SiiIntegrationService.name);
   private readonly certsDir = path.join(process.cwd(), 'sii-certs');
-  private readonly rutEmisor = '76.000.000-1';
 
   emitirDTE(datos: DteData): DteResult {
     try {
@@ -60,7 +68,7 @@ export class SiiIntegrationService {
       return {
         folio: datos.folio,
         tipoDoc: datos.tipoDoc,
-        rutEmisor: datos.rutEmisor,
+        rutEmisor: datos.emisor.rut,
         fechaEmision: datos.fechaEmision,
         montoTotal: datos.montoTotal,
         xmlFirmado,
@@ -100,7 +108,7 @@ export class SiiIntegrationService {
 
     const dd =
       `<DD>` +
-      `<RE>${datos.rutEmisor}</RE>` +
+      `<RE>${xml(datos.emisor.rut)}</RE>` +
       `<TD>${datos.tipoDoc}</TD>` +
       `<F>${datos.folio}</F>` +
       `<FE>${datos.fechaEmision}</FE>` +
@@ -141,8 +149,12 @@ export class SiiIntegrationService {
       `<Documento ID="${id}">` +
       `<Encabezado>` +
       `<IdDoc><TipoDTE>${datos.tipoDoc}</TipoDTE><Folio>${datos.folio}</Folio><FchEmis>${datos.fechaEmision}</FchEmis></IdDoc>` +
-      `<Emisor><RUTEmisor>${datos.rutEmisor}</RUTEmisor><RznSoc>EMPRESA PRUEBA SPA</RznSoc><Giro>TECNOLOGIA</Giro><DirOrigen>AV. TESIS 123</DirOrigen><CmnaOrigen>VILLA ALEGRE</CmnaOrigen></Emisor>` +
-      `<Receptor><RUTRecep>${xml(datos.rutReceptor)}</RUTRecep><RznSocRecep>${xml(datos.razonSocialReceptor)}</RznSocRecep><DirRecep>DIR</DirRecep><CmnaRecep>CMNA</CmnaRecep></Receptor>` +
+      `<Emisor><RUTEmisor>${xml(datos.emisor.rut)}</RUTEmisor><RznSoc>${xml(datos.emisor.razonSocial)}</RznSoc>` +
+      `<Giro>${xml(datos.emisor.giro)}</Giro><DirOrigen>${xml(datos.emisor.direccion)}</DirOrigen>` +
+      `<CmnaOrigen>${xml(datos.emisor.comuna)}</CmnaOrigen></Emisor>` +
+      `<Receptor><RUTRecep>${xml(datos.rutReceptor)}</RUTRecep><RznSocRecep>${xml(datos.razonSocialReceptor)}</RznSocRecep>` +
+      (datos.direccionReceptor ? `<DirRecep>${xml(datos.direccionReceptor)}</DirRecep>` : '') +
+      `</Receptor>` +
       `<Totales>` +
       (datos.montoNeto !== undefined ? `<MntNeto>${Math.round(datos.montoNeto)}</MntNeto>` : '') +
       (datos.iva !== undefined ? `<IVA>${Math.round(datos.iva)}</IVA>` : '') +
@@ -214,7 +226,7 @@ export class SiiIntegrationService {
     return {
       folio: datos.folio,
       tipoDoc: datos.tipoDoc,
-      rutEmisor: datos.rutEmisor,
+      rutEmisor: datos.emisor.rut,
       fechaEmision: datos.fechaEmision,
       montoTotal: datos.montoTotal,
       xmlFirmado: mockXml,

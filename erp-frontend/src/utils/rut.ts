@@ -35,4 +35,3 @@ export function rutConDv(cuerpo: string): string {
   return `${limpio}-${calcularDv(limpio)}`
 }
 
-export const RUT_DEFAULT = '66666666-6'

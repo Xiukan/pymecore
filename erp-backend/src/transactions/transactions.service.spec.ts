@@ -4,6 +4,7 @@ import { Prisma, TipoTransaccion } from '@prisma/client'
 import { TransactionsService } from './transactions.service'
 import { PrismaService } from '../prisma/prisma.service'
 import { SiiIntegrationService } from '../sii/sii-integration.service'
+import { EmpresaService } from '../empresa/empresa.service'
 
 const D = (v: Prisma.Decimal.Value) => new Prisma.Decimal(v)
 
@@ -67,6 +68,10 @@ describe('TransactionsService', () => {
         TransactionsService,
         { provide: PrismaService, useValue: prisma },
         { provide: SiiIntegrationService, useValue: siiMock },
+        {
+          provide: EmpresaService,
+          useValue: { get: jest.fn().mockResolvedValue({ tasaIva: D(19), rut: '76.000.000-1', rutConsumidorFinal: '66.666.666-6', nombreConsumidorFinal: 'CLIENTE FINAL' }) },
+        },
       ],
     }).compile()
     service = module.get(TransactionsService)
@@ -135,6 +140,12 @@ describe('TransactionsService', () => {
     expect(linea.subtotal).toEqual(D(10470))
     expect(linea.montoIva).toEqual(D(1672))
     expect(venta.sincronizacion).toBe('PENDIENTE')
+  })
+
+  it('rechaza compras: se registran en el módulo de Compras', async () => {
+    await expect(
+      service.create(buildDto(1, { tipoTransaccion: TipoTransaccion.COMPRA }) as any, 'user-001'),
+    ).rejects.toThrow(BadRequestException)
   })
 
   it('rechaza un descuento global mayor al total', async () => {

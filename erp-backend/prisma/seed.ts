@@ -48,6 +48,26 @@ async function main() {
     },
   });
 
+  // Parámetros de la empresa: solo se crean si faltan, nunca se pisan los editados.
+  await prisma.empresa.upsert({
+    where: { id: 1 },
+    update: {},
+    create: {
+      id: 1,
+      rut: '76.000.000-1',
+      razonSocial: 'EMPRESA PRUEBA SPA',
+      giro: 'TECNOLOGIA',
+      direccion: 'AV. TESIS 123',
+      comuna: 'VILLA ALEGRE',
+    },
+  });
+  for (const [codigo, nombre] of [
+    ['UN', 'Unidad'], ['KG', 'Kilogramo'], ['GR', 'Gramo'], ['LT', 'Litro'], ['ML', 'Mililitro'],
+    ['MT', 'Metro'], ['M2', 'Metro cuadrado'], ['CJ', 'Caja'], ['PAQ', 'Paquete'], ['DOC', 'Docena'],
+  ]) {
+    await prisma.unidadMedida.upsert({ where: { codigo }, update: {}, create: { codigo, nombre } });
+  }
+
   const items = await Promise.all([
     prisma.item.upsert({
       where: { codigoSku: 'ITEM-001' },
@@ -55,7 +75,7 @@ async function main() {
       create: {
         codigoSku: 'ITEM-001',
         nombre: 'Café Molido 250g',
-        unidadMedida: 'unidad',
+        unidadMedida: 'UN',
         precioVenta: 3490,
         costoPromedio: 1800,
         afectoIva: true,
@@ -67,7 +87,7 @@ async function main() {
       create: {
         codigoSku: 'ITEM-002',
         nombre: 'Azúcar 1kg',
-        unidadMedida: 'unidad',
+        unidadMedida: 'UN',
         precioVenta: 1290,
         costoPromedio: 700,
         afectoIva: true,
@@ -79,7 +99,7 @@ async function main() {
       create: {
         codigoSku: 'ITEM-003',
         nombre: 'Agua Mineral 500ml',
-        unidadMedida: 'unidad',
+        unidadMedida: 'UN',
         precioVenta: 590,
         costoPromedio: 200,
         afectoIva: false,
@@ -114,11 +134,24 @@ async function main() {
     },
   });
 
+  await prisma.entidad.upsert({
+    where: { id: '00000000-0000-0000-0000-000000000003' },
+    update: {},
+    create: {
+      id: '00000000-0000-0000-0000-000000000003',
+      tipoEntidad: 'PROVEEDOR',
+      rut: '76543210-3',
+      nombreRazonSocial: 'Distribuidora Demo Ltda',
+      email: 'ventas@distribuidorademo.cl',
+    },
+  });
+
   console.log(`Sucursal:  ${sucursal.nombre}`);
   console.log(`Usuarios:  admin, vendedor1`);
   console.log(`Items:     ${items.map((i) => i.codigoSku).join(', ')}`);
   console.log(`Stock:     100 unidades por item en casa matriz`);
   console.log(`Cliente:   Empresa Demo SpA (12345678-9)`);
+  console.log(`Proveedor: Distribuidora Demo Ltda (76543210-3)`);
   console.log('Seed completado.');
 }
 

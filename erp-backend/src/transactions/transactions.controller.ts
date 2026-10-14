@@ -22,9 +22,8 @@ export class TransactionsController {
     @Request() req: any,
     @Headers('idempotency-key') clave?: string,
   ) {
-    const soloGestion: TipoTransaccion[] = [TipoTransaccion.MERMA, TipoTransaccion.COMPRA];
-    if (soloGestion.includes(dto.tipoTransaccion) && !['Administrador', 'Encargado'].includes(req.user.rol)) {
-      throw new ForbiddenException('Solo Administrador o Encargado registran mermas y compras.');
+    if (dto.tipoTransaccion === TipoTransaccion.MERMA && !['Administrador', 'Encargado'].includes(req.user.rol)) {
+      throw new ForbiddenException('Solo Administrador o Encargado registran mermas.');
     }
     return this.service.create(dto, req.user.id, clave);
   }

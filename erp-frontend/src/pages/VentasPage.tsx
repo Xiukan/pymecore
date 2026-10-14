@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { useAuth } from '@/context/AuthContext'
+import { rutSinPuntos, useEmpresa } from '@/hooks/useEmpresa'
 import { nuevoUuid } from '@/utils/uuid'
 import { getItems, getStock, getSucursales, createTransaccion, getEntidadByRut, createEntidad, getOfertas, ejecutarSync } from '@/api'
 import { useOnlineStatus } from '@/hooks/useOnlineStatus'
-import { validarRut, calcularDv, rutConDv, formatRut, RUT_DEFAULT } from '@/utils/rut'
+import { validarRut, calcularDv, rutConDv, formatRut } from '@/utils/rut'
 import { generarPdfBoleta } from '@/utils/pdfBoleta'
 import type { Entidad, Item, Oferta, StockLocal, Sucursal } from '@/types'
 
@@ -38,6 +39,7 @@ type PasoCliente = 'inicio' | 'buscar' | 'registrar' | 'ok'
 
 export default function VentasPage() {
   const { user } = useAuth()
+  const empresa = useEmpresa()
   const online = useOnlineStatus()
   const [sucursales, setSucursales] = useState<Sucursal[]>([])
   const [sucursalId, setSucursalId] = useState(user?.sucursalId ?? '')
@@ -64,8 +66,9 @@ export default function VentasPage() {
   const [regDireccion, setRegDireccion] = useState('')
   const [registrando, setRegistrando] = useState(false)
   const [entidadId, setEntidadId] = useState<string | undefined>()
-  const [rutFinal, setRutFinal] = useState(RUT_DEFAULT)
-  const [razonSocial, setRazonSocial] = useState('CLIENTE FINAL')
+  // Vacío = consumidor final: el backend completa RUT y nombre desde la configuración de la empresa.
+  const [rutFinal, setRutFinal] = useState('')
+  const [razonSocial, setRazonSocial] = useState('')
 
   useEffect(() => {
     if (user?.rol === 'Administrador') {
@@ -155,8 +158,8 @@ export default function VentasPage() {
   }
 
   const usarSinRut = () => {
-    setRutFinal(RUT_DEFAULT)
-    setRazonSocial('CLIENTE FINAL')
+    setRutFinal('')
+    setRazonSocial('')
     setEntidadId(undefined)
     setPasoCliente('ok')
   }
@@ -190,8 +193,8 @@ export default function VentasPage() {
     setClienteBuscado(null)
     setEntidadId(undefined)
     setRegNombre(''); setRegApellido(''); setRegEmail(''); setRegDireccion('')
-    setRutFinal(RUT_DEFAULT)
-    setRazonSocial('CLIENTE FINAL')
+    setRutFinal('')
+    setRazonSocial('')
   }
 
   const precioEfectivo = (item: Item) =>
@@ -247,8 +250,8 @@ export default function VentasPage() {
         entidadId,
         tipoTransaccion: 'VENTA',
         medioPago: 'Efectivo',
-        rutReceptor: rutFinal,
-        razonSocialReceptor: razonSocial,
+        rutReceptor: rutFinal || undefined,
+        razonSocialReceptor: razonSocial || undefined,
         tipoDocumento: tipoDoc,
         detalles: lineas.map((l) => ({ itemId: l.itemId, cantidad: l.cantidad, precioUnitario: l.precioUnitario })),
       }, claveCobro.current)
@@ -281,14 +284,14 @@ export default function VentasPage() {
   const descargarUltimoPdf = () => {
     if (!ultimaVenta) return
     const { dte, transaccion, lineas: ls, rutFinal: rut, razonSocial: rs, tipoDoc: td } = ultimaVenta
+    if (!empresa) return
     generarPdfBoleta({
       folio: dte?.folio ?? parseInt(transaccion.numeroFactura ?? '0'),
       tipoDoc: td,
       fecha: new Date().toLocaleDateString('es-CL'),
-      rutEmisor: '76.000.000-1',
-      razonSocialEmisor: 'PYMECORE SPA',
-      rutReceptor: rut,
-      razonSocialReceptor: rs,
+      emisor: empresa,
+      rutReceptor: rut || empresa.rutConsumidorFinal,
+      razonSocialReceptor: rs || empresa.nombreConsumidorFinal,
       medioPago: 'Efectivo',
       sucursal: '',
       detalles: ls.map((l: LineaVenta) => ({ nombre: l.nombre, cantidad: l.cantidad, precio: l.precioUnitario, subtotal: l.precioUnitario * l.cantidad })),
@@ -473,7 +476,7 @@ export default function VentasPage() {
               )}
               {rutError && <p style={{ margin: 0, fontSize: 11, color: '#e53e3e' }}>{rutError}</p>}
               <button onClick={usarSinRut} style={{ marginTop: 2, background: 'none', border: 'none', color: '#a0aec0', fontSize: 11, cursor: 'pointer', textAlign: 'left' }}>
-                → Continuar sin RUT ({RUT_DEFAULT})
+                → Continuar sin RUT ({empresa ? rutSinPuntos(empresa.rutConsumidorFinal) : '…'})
               </button>
             </div>
           )}
@@ -511,8 +514,8 @@ export default function VentasPage() {
           {pasoCliente === 'ok' && (
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
-                <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: '#276749' }}>✓ {razonSocial}</p>
-                <p style={{ margin: 0, fontSize: 11, color: '#a0aec0' }}>{rutFinal}</p>
+                <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: '#276749' }}>✓ {razonSocial || empresa?.nombreConsumidorFinal}</p>
+                <p style={{ margin: 0, fontSize: 11, color: '#a0aec0' }}>{rutFinal || (empresa && rutSinPuntos(empresa.rutConsumidorFinal))}</p>
               </div>
               <button onClick={resetCliente} style={{ background: 'none', border: 'none', color: '#a0aec0', fontSize: 11, cursor: 'pointer' }}>Cambiar</button>
             </div>

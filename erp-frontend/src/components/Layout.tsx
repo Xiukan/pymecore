@@ -12,10 +12,12 @@ const navItems = [
   { to: '/mermas', label: 'Mermas', end: false, roles: ['Administrador', 'Encargado'] },
   { to: '/devoluciones', label: 'Devoluciones', end: false, roles: null },
   { to: '/precios', label: 'Precios / Ofertas', end: false, roles: ['Administrador', 'Encargado'] },
+  { to: '/compras', label: 'Compras', end: false, roles: ['Administrador', 'Encargado'] },
   { to: '/despachos', label: 'Despacho sucursales', end: false, roles: ['Administrador', 'Encargado'] },
   { to: '/documentos', label: 'Documentos', end: false, roles: null },
   { to: '/clientes', label: 'Clientes', end: false, roles: null },
   { to: '/usuarios', label: 'Usuarios', end: false, roles: ['Administrador'] },
+  { to: '/configuracion', label: 'Configuración', end: false, roles: ['Administrador'] },
 ]
 
 function forzarOffline() {

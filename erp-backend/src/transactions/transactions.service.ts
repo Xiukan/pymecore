@@ -8,6 +8,7 @@ import { createHash } from 'crypto';
 import { isUUID } from 'class-validator';
 import { Item, Prisma, TipoTransaccion } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { EmpresaService } from '../empresa/empresa.service';
 import { SiiIntegrationService } from '../sii/sii-integration.service';
 import { reclamarFolio } from '../utils/folios.util';
 import { calcularDocumento, dec, peso, share, ZERO } from '../utils/money.util';
@@ -57,6 +58,7 @@ export class TransactionsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly sii: SiiIntegrationService,
+    private readonly empresa: EmpresaService,
   ) {}
 
   /**
@@ -108,6 +110,9 @@ export class TransactionsService {
     if (new Set(itemIds).size !== itemIds.length) {
       throw new BadRequestException('El documento repite un ítem; agrupe las cantidades en una sola línea.');
     }
+    if (dto.tipoTransaccion === TipoTransaccion.COMPRA) {
+      throw new BadRequestException('Las compras se registran en el módulo de Compras (orden, recepción y factura).');
+    }
     if (dto.tipoTransaccion === TipoTransaccion.MERMA && !dto.motivoMerma?.trim()) {
       throw new BadRequestException('Indique el motivo de la merma.');
     }
@@ -123,6 +128,7 @@ export class TransactionsService {
       throw new NotFoundException('Uno o más ítems no existen o están inactivos');
     }
     const itemMap = new Map(items.map((i) => [i.id, i]));
+    const empresa = await this.empresa.get();
 
     const transaccion = await this.prisma.$transaction(async (tx) => {
       // La reserva va primero: una segunda petición con la misma clave espera aquí y luego falla por unicidad.
@@ -133,7 +139,7 @@ export class TransactionsService {
       }
       const lineas = esRetorno
         ? await this.prepararRetorno(tx, dto)
-        : await this.prepararDocumento(tx, dto, itemMap);
+        : await this.prepararDocumento(tx, dto, itemMap, empresa.tasaIva);
 
       if (dto.tipoTransaccion === TipoTransaccion.VENTA || dto.tipoTransaccion === TipoTransaccion.MERMA) {
         for (const l of lineas) await this.descontarStock(tx, dto.sucursalId, l, itemMap.get(l.itemId)!);
@@ -199,9 +205,9 @@ export class TransactionsService {
       dte = this.sii.emitirDTE({
         folio,
         tipoDoc,
-        rutEmisor: '76.000.000-1',
-        rutReceptor: dto.rutReceptor ?? '66.666.666-6',
-        razonSocialReceptor: dto.razonSocialReceptor ?? 'CLIENTE FINAL',
+        emisor: empresa,
+        rutReceptor: dto.rutReceptor ?? empresa.rutConsumidorFinal,
+        razonSocialReceptor: dto.razonSocialReceptor ?? empresa.nombreConsumidorFinal,
         fechaEmision: new Date().toISOString().substring(0, 10),
         montoTotal: Number(creada.montoTotal),
         ...desglose(creada),
@@ -228,8 +234,13 @@ export class TransactionsService {
     return { ...creada, numeroFactura: String(folio), dte };
   }
 
-  /** Venta: precio vigente del servidor. Merma: valorizada a costo. Compra: precio informado. */
-  private async prepararDocumento(tx: Tx, dto: CreateTransactionDto, itemMap: Map<string, Item>) {
+  /** Venta: precio vigente del servidor. Merma: valorizada a costo. */
+  private async prepararDocumento(
+    tx: Tx,
+    dto: CreateTransactionDto,
+    itemMap: Map<string, Item>,
+    tasaIva: Prisma.Decimal,
+  ) {
     const ahora = new Date();
     const ofertas = await tx.oferta.findMany({
       where: {
@@ -255,13 +266,8 @@ export class TransactionsService {
             `El precio de "${item.nombre}" cambió a $${precio.toString()}. Actualice el carrito antes de cobrar.`,
           );
         }
-      } else if (dto.tipoTransaccion === TipoTransaccion.MERMA) {
-        precio = item.costoPromedio;
       } else {
-        if (d.precioUnitario === undefined) {
-          throw new BadRequestException(`Indique el precio de compra de "${item.nombre}".`);
-        }
-        precio = dec(d.precioUnitario);
+        precio = item.costoPromedio;
       }
       return { item, cantidad: dec(d.cantidad), precio, descuento: dec(d.descuentoLinea ?? 0) };
     });
@@ -274,6 +280,7 @@ export class TransactionsService {
         afectoIva: dto.tipoTransaccion !== TipoTransaccion.MERMA && b.item.afectoIva,
       })),
       dto.descuentoGlobal ?? 0,
+      tasaIva,
     );
     if (dto.tipoTransaccion === TipoTransaccion.VENTA && calculo.montoTotal.lte(0)) {
       throw new BadRequestException('El total de la venta debe ser mayor a cero.');

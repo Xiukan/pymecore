@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { EmpresaService } from '../empresa/empresa.service';
 import { SiiIntegrationService } from '../sii/sii-integration.service';
 import { desglose } from '../transactions/transactions.service';
 import { reclamarFolio } from '../utils/folios.util';
@@ -13,6 +14,7 @@ export class SyncService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly sii: SiiIntegrationService,
+    private readonly empresa: EmpresaService,
   ) {}
 
   async getPendientes(sucursalId?: string) {
@@ -125,12 +127,14 @@ export class SyncService {
       precio: Number(d.precioUnitario),
       subtotal: Number(d.subtotal),
     }));
+    const empresa = await this.empresa.get();
     const dte = this.sii.emitirDTE({
       folio,
       tipoDoc,
-      rutEmisor: '76.000.000-1',
-      rutReceptor: tx.entidad?.rut ?? '66.666.666-6',
-      razonSocialReceptor: tx.entidad?.nombreRazonSocial ?? 'CLIENTE FINAL',
+      emisor: empresa,
+      rutReceptor: tx.entidad?.rut ?? empresa.rutConsumidorFinal,
+      razonSocialReceptor: tx.entidad?.nombreRazonSocial ?? empresa.nombreConsumidorFinal,
+      direccionReceptor: tx.entidad?.direccion,
       fechaEmision: new Date(tx.fechaRegistro).toISOString().substring(0, 10),
       montoTotal: Number(tx.montoTotal),
       ...desglose(tx),
