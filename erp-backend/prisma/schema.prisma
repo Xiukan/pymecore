@@ -67,6 +67,13 @@ enum EstadoOrdenCompra {
   ANULADA
 }
 
+enum EstadoDteRecibido {
+  PENDIENTE
+  ASOCIADO_OC
+  GASTO
+  DESCARTADO
+}
+
 enum EstadoDocumentoCompra {
   VIGENTE
   ANULADO
@@ -113,6 +120,7 @@ model Usuario {
   ordenesCompra       OrdenCompra[]
   recepcionesCompra   RecepcionCompra[]
   facturasCompra      FacturaCompra[]
+  dteRecibidos        DteRecibido[]
 
   @@map("usuarios")
 }
@@ -131,6 +139,7 @@ model Entidad {
   transacciones  Transaccion[]
   ordenesCompra  OrdenCompra[]
   facturasCompra FacturaCompra[]
+  dteRecibidos   DteRecibido[]
 
   @@map("entidades")
 }
@@ -286,7 +295,8 @@ model GastoOperacional {
   monto         Decimal  @db.Decimal(12, 2)
   fechaRegistro DateTime @default(now()) @map("fecha_registro")
 
-  usuario Usuario @relation(fields: [usuarioId], references: [id])
+  usuario Usuario      @relation(fields: [usuarioId], references: [id])
+  dte     DteRecibido?
 
   @@map("gastos_operacionales")
 }
@@ -438,6 +448,7 @@ model FacturaCompra {
   proveedor Entidad                @relation(fields: [proveedorId], references: [id])
   usuario   Usuario                @relation(fields: [usuarioId], references: [id])
   detalles  FacturaCompraDetalle[]
+  dte       DteRecibido?
 
   @@index([proveedorId, folio])
   @@map("facturas_compra")
@@ -455,4 +466,44 @@ model FacturaCompraDetalle {
   detalleOrden OrdenCompraDetalle @relation(fields: [detalleOrdenId], references: [id])
 
   @@map("facturas_compra_detalle")
+}
+
+// Bandeja de DTE recibidos de proveedores (base del libro de compras). Se conserva el XML
+// tal como llegó, su hash y el resultado de verificar timbre y firma. Su destino es una
+// factura de compra asociada a una OC, un gasto operacional o el descarte.
+model DteRecibido {
+  id                String            @id @default(uuid()) @db.Uuid
+  tipoDte           Int               @map("tipo_dte")
+  folio             String            @db.VarChar(20)
+  rutEmisor         String            @map("rut_emisor") @db.VarChar(12)
+  razonSocialEmisor String            @map("razon_social_emisor") @db.VarChar(120)
+  fechaEmision      DateTime          @map("fecha_emision") @db.Date
+  fechaVencimiento  DateTime?         @map("fecha_vencimiento") @db.Date
+  montoNeto         Decimal           @map("monto_neto") @db.Decimal(14, 2)
+  montoExento       Decimal           @map("monto_exento") @db.Decimal(14, 2)
+  iva               Decimal           @db.Decimal(14, 2)
+  otrosImpuestos    Decimal           @map("otros_impuestos") @db.Decimal(14, 2)
+  montoTotal        Decimal           @map("monto_total") @db.Decimal(14, 2)
+  referenciaOc      String?           @map("referencia_oc") @db.VarChar(20)
+  detalle           Json
+  observaciones     Json
+  timbreValido      Boolean           @map("timbre_valido")
+  firmaValida       Boolean           @map("firma_valida")
+  xml               String            @db.Text
+  sha256            String            @db.Char(64)
+  estado            EstadoDteRecibido @default(PENDIENTE)
+  motivoDescarte    String?           @map("motivo_descarte") @db.VarChar(200)
+  proveedorId       String            @map("proveedor_id") @db.Uuid
+  usuarioId         String            @map("usuario_id") @db.Uuid
+  facturaCompraId   String?           @unique @map("factura_compra_id") @db.Uuid
+  gastoId           String?           @unique @map("gasto_id") @db.Uuid
+  creadoEn          DateTime          @default(now()) @map("creado_en")
+
+  proveedor     Entidad           @relation(fields: [proveedorId], references: [id])
+  usuario       Usuario           @relation(fields: [usuarioId], references: [id])
+  facturaCompra FacturaCompra?    @relation(fields: [facturaCompraId], references: [id])
+  gasto         GastoOperacional? @relation(fields: [gastoId], references: [id])
+
+  @@unique([rutEmisor, tipoDte, folio])
+  @@map("dte_recibidos")
 }

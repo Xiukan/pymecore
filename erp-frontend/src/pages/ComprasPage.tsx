@@ -16,8 +16,9 @@ import {
   recibirOrdenCompra,
 } from '@/api'
 import { useEmpresa } from '@/hooks/useEmpresa'
+import DteRecibidosPanel from '@/pages/DteRecibidosPanel'
 import { validarRut } from '@/utils/rut'
-import type { Entidad, Item, OrdenCompra, SituacionCompra, Sucursal } from '@/types'
+import type { DteRecibido, Entidad, Item, OrdenCompra, SituacionCompra, Sucursal } from '@/types'
 
 const input = 'w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500'
 const btn = 'text-sm px-4 py-2 rounded-lg disabled:opacity-50'
@@ -71,6 +72,10 @@ export default function ComprasPage() {
   const [costos, setCostos] = useState<Record<string, string>>({})
   const [doc, setDoc] = useState({ guia: '', folio: '', fechaEmision: hoy(), fechaVencimiento: '', montoTotal: '' })
   const [enviando, setEnviando] = useState(false)
+  const [pestana, setPestana] = useState<'ordenes' | 'dte'>('ordenes')
+  // DTE de la bandeja que respalda la factura en curso: su folio, fecha y montos mandan.
+  const [dteFactura, setDteFactura] = useState<DteRecibido | null>(null)
+  const [versionDte, setVersionDte] = useState(0)
 
   const cargar = () => {
     setCargando(true)
@@ -169,19 +174,29 @@ export default function ComprasPage() {
   const verDetalle = async (id: string) => {
     setError('')
     setAccion(null)
+    setDteFactura(null)
     try {
       const { data } = await getOrdenCompra(id)
       setDetalle(data)
+      return data
     } catch (e) {
       setError(mensajeError(e))
     }
   }
 
-  const iniciar = (tipo: 'recibir' | 'facturar') => {
-    if (!detalle) return
+  const asociarDte = async (dte: DteRecibido, ordenId: string) => {
+    const orden = await verDetalle(ordenId)
+    if (!orden) return
+    iniciar('facturar', orden)
+    setDteFactura(dte)
+    setDoc({ guia: '', folio: dte.folio, fechaEmision: dte.fechaEmision.slice(0, 10), fechaVencimiento: dte.fechaVencimiento?.slice(0, 10) ?? '', montoTotal: '' })
+  }
+
+  const iniciar = (tipo: 'recibir' | 'facturar', orden = detalle) => {
+    if (!orden) return
     const campo = tipo === 'recibir' ? 'porRecibir' : 'porFacturar'
-    setCantidades(Object.fromEntries(detalle.detalles.map((d) => [d.id, String(Number(d[campo] ?? 0))])))
-    setCostos(Object.fromEntries(detalle.detalles.map((d) => [d.id, String(Number(d.costoUnitario))])))
+    setCantidades(Object.fromEntries(orden.detalles.map((d) => [d.id, String(Number(d[campo] ?? 0))])))
+    setCostos(Object.fromEntries(orden.detalles.map((d) => [d.id, String(Number(d.costoUnitario))])))
     setDoc({ guia: '', folio: '', fechaEmision: hoy(), fechaVencimiento: '', montoTotal: '' })
     setAccion(tipo)
     setError('')
@@ -216,15 +231,18 @@ export default function ComprasPage() {
         }),
       )
     }
-    return ejecutar(() =>
-      facturarOrdenCompra(detalle.id, {
+    return ejecutar(async () => {
+      await facturarOrdenCompra(detalle.id, {
+        dteId: dteFactura?.id,
         folio: doc.folio,
         fechaEmision: doc.fechaEmision,
         fechaVencimiento: doc.fechaVencimiento || undefined,
         montoTotal: doc.montoTotal ? Number(doc.montoTotal) : undefined,
         detalles: lineas.map((l) => ({ detalleId: l.d.id, cantidad: l.cantidad, costoUnitario: Number(costos[l.d.id]) })),
-      }),
-    )
+      })
+      setDteFactura(null)
+      setVersionDte((v) => v + 1)
+    })
   }
 
   const confirmar = (texto: string, fn: () => Promise<unknown>) => {
@@ -240,6 +258,21 @@ export default function ComprasPage() {
         </button>
       </div>
 
+      <div className="flex gap-1 border-b border-gray-200">
+        {([['ordenes', 'Órdenes de compra'], ['dte', 'DTE recibidos']] as const).map(([id, label]) => (
+          <button
+            key={id}
+            onClick={() => setPestana(id)}
+            className={`px-4 py-2 text-sm font-medium -mb-px border-b-2 ${pestana === id ? 'border-blue-600 text-blue-700' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {pestana === 'dte' && <DteRecibidosPanel onAsociar={asociarDte} version={versionDte} />}
+
+      {pestana === 'ordenes' && (<>
       <div className="flex flex-wrap gap-3">
         <select value={filtroEstado} onChange={(e) => setFiltroEstado(e.target.value)} className="border border-gray-300 rounded-lg px-3 py-2 text-sm">
           <option value="ABIERTA">Abiertas</option>
@@ -298,6 +331,7 @@ export default function ComprasPage() {
           </tbody>
         </table>
       </div>
+      </>)}
 
       {nueva && (
         <Modal titulo="Nueva orden de compra" onClose={() => setNueva(null)}>
@@ -462,11 +496,11 @@ export default function ComprasPage() {
                 <>
                   <label className="block">
                     <span className="block text-xs font-medium text-gray-600 mb-1">Folio factura *</span>
-                    <input value={doc.folio} maxLength={30} onChange={(e) => setDoc({ ...doc, folio: e.target.value })} className={input} />
+                    <input value={doc.folio} maxLength={30} disabled={!!dteFactura} onChange={(e) => setDoc({ ...doc, folio: e.target.value })} className={`${input} disabled:bg-gray-100`} />
                   </label>
                   <label className="block">
                     <span className="block text-xs font-medium text-gray-600 mb-1">Emisión *</span>
-                    <input type="date" value={doc.fechaEmision} onChange={(e) => setDoc({ ...doc, fechaEmision: e.target.value })} className={input} />
+                    <input type="date" value={doc.fechaEmision} disabled={!!dteFactura} onChange={(e) => setDoc({ ...doc, fechaEmision: e.target.value })} className={`${input} disabled:bg-gray-100`} />
                   </label>
                   <label className="block">
                     <span className="block text-xs font-medium text-gray-600 mb-1">Vencimiento</span>
@@ -478,8 +512,13 @@ export default function ComprasPage() {
                   </label>
                 </>
               )}
+              {dteFactura && (
+                <p className="sm:col-span-4 text-xs text-purple-700">
+                  Desde el DTE de {dteFactura.razonSocialEmisor}: neto {clp(Number(dteFactura.montoNeto) + Number(dteFactura.montoExento))}, IVA {clp(dteFactura.iva)}. Las cantidades elegidas deben sumar esos montos.
+                </p>
+              )}
               <div className="flex gap-2 sm:col-span-4 justify-end">
-                <button onClick={() => setAccion(null)} className={`${btn} text-gray-600`}>Cancelar</button>
+                <button onClick={() => { setAccion(null); setDteFactura(null) }} className={`${btn} text-gray-600`}>Cancelar</button>
                 <button onClick={confirmarDocumento} disabled={enviando || (accion === 'facturar' && !doc.folio.trim())} className={`${btn} bg-blue-600 hover:bg-blue-700 text-white`}>
                   {accion === 'recibir' ? 'Confirmar recepción' : 'Registrar factura'}
                 </button>

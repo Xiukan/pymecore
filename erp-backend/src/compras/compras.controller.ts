@@ -1,17 +1,28 @@
 import { Body, Controller, Get, Param, Patch, Post, Query, Request } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
-import { EstadoOrdenCompra } from '@prisma/client';
+import { EstadoDteRecibido, EstadoOrdenCompra } from '@prisma/client';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { ParseLooseUuidPipe } from '../utils/parse-uuid.pipe';
 import { ComprasService } from './compras.service';
-import { CreateFacturaCompraDto, CreateOrdenCompraDto, CreateRecepcionDto } from './dto/compras.dto';
+import { DteRecibidosService } from './dte-recibidos.service';
+import {
+  CreateFacturaCompraDto,
+  CreateOrdenCompraDto,
+  CreateRecepcionDto,
+  DescartarDteDto,
+  GastoDteDto,
+  ImportarDteDto,
+} from './dto/compras.dto';
 
 @ApiTags('Compras')
 @ApiBearerAuth('JWT')
 @Roles('Administrador', 'Encargado')
 @Controller('compras')
 export class ComprasController {
-  constructor(private readonly service: ComprasService) {}
+  constructor(
+    private readonly service: ComprasService,
+    private readonly dtes: DteRecibidosService,
+  ) {}
 
   @Post('ordenes')
   @ApiOperation({ summary: 'Emitir orden de compra a un proveedor' })
@@ -70,5 +81,36 @@ export class ComprasController {
   @ApiOperation({ summary: 'Anular factura de proveedor' })
   anularFactura(@Param('id', ParseLooseUuidPipe) id: string, @Request() req: any) {
     return this.service.anularFactura(id, req.user);
+  }
+
+  @Post('dte')
+  @ApiOperation({ summary: 'Cargar un DTE recibido de un proveedor (verifica timbre y firma)' })
+  importarDte(@Body() dto: ImportarDteDto, @Request() req: any) {
+    return this.dtes.importar(dto.xml, req.user);
+  }
+
+  @Get('dte')
+  @ApiOperation({ summary: 'Bandeja de DTE recibidos' })
+  @ApiQuery({ name: 'estado', required: false, enum: EstadoDteRecibido })
+  listarDte(@Query('estado') estado?: EstadoDteRecibido) {
+    return this.dtes.listar(estado && Object.values(EstadoDteRecibido).includes(estado) ? estado : undefined);
+  }
+
+  @Get('dte/:id')
+  @ApiOperation({ summary: 'DTE recibido con su XML original' })
+  detalleDte(@Param('id', ParseLooseUuidPipe) id: string) {
+    return this.dtes.detalle(id);
+  }
+
+  @Post('dte/:id/gasto')
+  @ApiOperation({ summary: 'Registrar el DTE como gasto operacional (servicios sin OC)' })
+  gastoDte(@Param('id', ParseLooseUuidPipe) id: string, @Body() dto: GastoDteDto, @Request() req: any) {
+    return this.dtes.registrarGasto(id, dto, req.user);
+  }
+
+  @Patch('dte/:id/descartar')
+  @ApiOperation({ summary: 'Descartar un DTE que no corresponde registrar' })
+  descartarDte(@Param('id', ParseLooseUuidPipe) id: string, @Body() dto: DescartarDteDto) {
+    return this.dtes.descartar(id, dto.motivo);
   }
 }

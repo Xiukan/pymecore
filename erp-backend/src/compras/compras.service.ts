@@ -4,6 +4,7 @@ import { esAdmin, exigirSucursal, sucursalDe, UsuarioSesion } from '../auth/sucu
 import { EmpresaService } from '../empresa/empresa.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { calcularDocumentoNeto, dec, ZERO } from '../utils/money.util';
+import { DteRecibidosService } from './dte-recibidos.service';
 import { CreateFacturaCompraDto, CreateOrdenCompraDto, CreateRecepcionDto } from './dto/compras.dto';
 
 type Tx = Prisma.TransactionClient;
@@ -56,6 +57,7 @@ export class ComprasService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly empresa: EmpresaService,
+    private readonly dtes: DteRecibidosService,
   ) {}
 
   async crearOrden(dto: CreateOrdenCompraDto, user: UsuarioSesion) {
@@ -247,6 +249,17 @@ export class ComprasService {
       });
       if (repetida) throw new BadRequestException(`Ya existe una factura vigente con folio ${folio} de este proveedor.`);
 
+      // Desde la bandeja: el DTE manda sobre lo que se digite.
+      const dte = dto.dteId ? await this.dtes.tomarPendiente(tx, dto.dteId) : null;
+      if (dte) {
+        if (dte.proveedorId !== orden.proveedorId) throw new BadRequestException('El DTE es de otro proveedor que la orden.');
+        if (![33, 34].includes(dte.tipoDte)) throw new BadRequestException('Solo una factura (33 o 34) se asocia a una orden de compra.');
+        if (dte.folio !== folio) throw new BadRequestException(`El folio debe ser el del DTE (${dte.folio}).`);
+        if (dte.fechaEmision.toISOString().slice(0, 10) !== dto.fechaEmision.slice(0, 10)) {
+          throw new BadRequestException('La fecha de emisión debe ser la del DTE.');
+        }
+      }
+
       const lineas = this.lineasDeOrden(orden, dto.detalles);
       const avance = await this.avance(tx, orden.detalles.map((d) => d.id));
       for (const [i, { detalle, cantidad }] of lineas.entries()) {
@@ -269,13 +282,19 @@ export class ComprasService {
         lineas.map((l) => ({ cantidad: l.cantidad, costoUnitario: l.detalle.costoUnitario, afectoIva: l.detalle.item.afectoIva })),
         tasaIva,
       );
+      if (dte && !(calculo.montoNeto.eq(dte.montoNeto.add(dte.montoExento)) && calculo.montoIva.eq(dte.iva))) {
+        throw new BadRequestException(
+          `Lo seleccionado (neto $${calculo.montoNeto}, IVA $${calculo.montoIva}) no cuadra con el DTE ` +
+            `(neto $${dte.montoNeto.add(dte.montoExento)}, IVA $${dte.iva}). Ajuste las cantidades recibidas a facturar.`,
+        );
+      }
       if (dto.montoTotal !== undefined && !calculo.montoTotal.eq(dto.montoTotal)) {
         throw new BadRequestException(
           `El total informado ($${dto.montoTotal}) no cuadra con el detalle ($${calculo.montoTotal}). Revise cantidades y costos.`,
         );
       }
 
-      return tx.facturaCompra.create({
+      const factura = await tx.facturaCompra.create({
         data: {
           ordenId,
           proveedorId: orden.proveedorId,
@@ -297,6 +316,10 @@ export class ComprasService {
         },
         include: { detalles: true },
       });
+      if (dte) {
+        await tx.dteRecibido.update({ where: { id: dte.id }, data: { estado: 'ASOCIADO_OC', facturaCompraId: factura.id } });
+      }
+      return factura;
     });
   }
 
@@ -310,6 +333,11 @@ export class ComprasService {
         data: { estado: 'ANULADO' },
       });
       if (count !== 1) throw new BadRequestException('La factura ya está anulada.');
+      // El DTE de origen vuelve a la bandeja para asociarlo de nuevo.
+      await tx.dteRecibido.updateMany({
+        where: { facturaCompraId: facturaId },
+        data: { estado: 'PENDIENTE', facturaCompraId: null },
+      });
       return tx.facturaCompra.findUniqueOrThrow({ where: { id: facturaId } });
     });
   }

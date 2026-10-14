@@ -106,6 +106,11 @@ export class CreateFacturaCompraDto {
   @IsOptional()
   fechaVencimiento?: string;
 
+  @ApiPropertyOptional({ description: 'DTE de la bandeja de recibidos que respalda esta factura' })
+  @IsUUID('loose')
+  @IsOptional()
+  dteId?: string;
+
   @ApiPropertyOptional({ description: 'Total impreso en la factura; si se informa debe cuadrar con el detalle' })
   @IsNumber({ maxDecimalPlaces: 0 })
   @Min(0)
@@ -118,4 +123,31 @@ export class CreateFacturaCompraDto {
   @ValidateNested({ each: true })
   @Type(() => LineaFacturaDto)
   detalles: LineaFacturaDto[];
+}
+
+export class ImportarDteDto {
+  @ApiProperty({ description: 'Contenido del XML del DTE o EnvioDTE recibido' })
+  @IsString()
+  @MinLength(1)
+  @MaxLength(600_000)
+  xml: string;
+}
+
+export class GastoDteDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(50)
+  categoria: string;
+
+  @IsString()
+  @MaxLength(200)
+  @IsOptional()
+  descripcion?: string;
+}
+
+export class DescartarDteDto {
+  @IsString()
+  @MinLength(3)
+  @MaxLength(200)
+  motivo: string;
 }

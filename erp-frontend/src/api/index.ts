@@ -1,5 +1,5 @@
 import { api } from './client'
-import type { DashboardReporte, Empresa, Entidad, OrdenCompra, UnidadMedida, GuiaDespacho, Item, Oferta, StockLocal, Sucursal, Transaccion, Usuario } from '@/types'
+import type { DashboardReporte, DteRecibido, Empresa, Entidad, OrdenCompra, UnidadMedida, GuiaDespacho, Item, Oferta, StockLocal, Sucursal, Transaccion, Usuario } from '@/types'
 
 // Auth
 export const login = (username: string, password: string) =>
@@ -211,6 +211,7 @@ export const recibirOrdenCompra = (id: string, data: {
 }) => api.post(`/compras/ordenes/${id}/recepciones`, data)
 
 export const facturarOrdenCompra = (id: string, data: {
+  dteId?: string
   folio: string
   fechaEmision: string
   fechaVencimiento?: string
@@ -225,3 +226,15 @@ export const anularOrdenCompra = (id: string) => api.patch(`/compras/ordenes/${i
 export const anularRecepcionCompra = (id: string) => api.patch(`/compras/recepciones/${id}/anular`, {})
 
 export const anularFacturaCompra = (id: string) => api.patch(`/compras/facturas/${id}/anular`, {})
+
+// DTE recibidos
+export const importarDte = (xml: string) => api.post<DteRecibido>('/compras/dte', { xml })
+
+export const getDtes = (estado?: string) =>
+  api.get<DteRecibido[]>('/compras/dte', { params: estado ? { estado } : undefined })
+
+export const registrarGastoDte = (id: string, data: { categoria: string; descripcion?: string }) =>
+  api.post<DteRecibido>(`/compras/dte/${id}/gasto`, data)
+
+export const descartarDte = (id: string, motivo: string) =>
+  api.patch<DteRecibido>(`/compras/dte/${id}/descartar`, { motivo })

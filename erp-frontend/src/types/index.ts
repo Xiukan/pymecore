@@ -226,3 +226,36 @@ export interface OrdenCompra {
   recepciones?: RecepcionCompra[]
   facturas?: FacturaCompra[]
 }
+
+export type EstadoDteRecibido = 'PENDIENTE' | 'ASOCIADO_OC' | 'GASTO' | 'DESCARTADO'
+
+export interface DteRecibido {
+  id: string
+  tipoDte: number
+  folio: string
+  rutEmisor: string
+  razonSocialEmisor: string
+  fechaEmision: string
+  fechaVencimiento: string | null
+  montoNeto: string
+  montoExento: string
+  iva: string
+  otrosImpuestos: string
+  montoTotal: string
+  referenciaOc: string | null
+  detalle: {
+    lineas: { linea: number; nombre: string; descripcion?: string; cantidad?: string; unidad?: string; precio?: string; exento: boolean; monto: string }[]
+    otrosImpuestos: { tipo: string; tasa?: string; monto: string }[]
+  }
+  observaciones: string[]
+  timbreValido: boolean
+  firmaValida: boolean
+  sha256: string
+  estado: EstadoDteRecibido
+  motivoDescarte: string | null
+  facturaCompraId: string | null
+  gastoId: string | null
+  creadoEn: string
+  proveedor: { id: string; rut: string; nombreRazonSocial: string }
+  usuario: { nombreCompleto: string }
+}

@@ -2,11 +2,14 @@ import 'dotenv/config';
 import { ValidationPipe } from '@nestjs/common';
 import { HttpAdapterHost, NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 import { PrismaExceptionFilter } from './utils/prisma-exception.filter';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  // Los XML de DTE recibidos llegan en el cuerpo JSON; el tope real lo fija cada DTO.
+  app.useBodyParser('json', { limit: '1mb' });
 
   // CORS
   app.enableCors({
