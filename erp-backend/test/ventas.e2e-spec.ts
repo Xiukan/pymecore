@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto'
-import { auth, CASA_MATRIZ, cerrar, Contexto, iniciar } from './helpers'
+import { abrirCaja, auth, CASA_MATRIZ, cerrar, Contexto, iniciar } from './helpers'
 
 describe('ventas', () => {
   let ctx: Contexto
@@ -16,6 +16,8 @@ describe('ventas', () => {
     cafe = await ctx.item('ITEM-001')
     agua = await ctx.item('ITEM-003')
     await ctx.db.stockLocal.updateMany({ where: { sucursalId: CASA_MATRIZ }, data: { stockActual: 1000 } })
+    await abrirCaja(ctx, ctx.vendedor)
+    await abrirCaja(ctx, ctx.admin)
   })
   afterAll(() => cerrar(ctx))
 

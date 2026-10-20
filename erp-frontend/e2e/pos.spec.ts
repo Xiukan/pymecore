@@ -10,6 +10,14 @@ test.describe('POS — flujo de cobro', () => {
     await expect(page.getByText('Dashboard comercial')).toBeVisible()
     await page.goto('/ventas')
     await page.waitForSelector('text=Punto de Venta')
+    // Para cobrar se necesita caja abierta.
+    await expect(page.getByText(/● Caja (abierta|cerrada)/)).toBeVisible()
+    const abrir = page.getByRole('button', { name: 'Abrir caja' })
+    if (await abrir.isVisible()) {
+      await page.getByPlaceholder('Fondo inicial').fill('20000')
+      await abrir.click()
+    }
+    await expect(page.getByText('● Caja abierta')).toBeVisible()
   })
 
   test('agrega un producto al carrito y lo refleja en el resumen', async ({ page }) => {

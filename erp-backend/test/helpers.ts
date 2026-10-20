@@ -48,3 +48,12 @@ export async function cerrar(ctx: Contexto) {
 }
 
 export const auth = (token: string) => ({ Authorization: `Bearer ${token}` })
+
+/** Deja al usuario con una caja recién abierta en la sucursal (cierra a la fuerza la que tuviera). */
+export async function abrirCaja(ctx: Contexto, token: string, sucursalId = CASA_MATRIZ, montoApertura = 20000) {
+  const actual = (await ctx.http().get('/caja/actual').set(auth(token))).body
+  if (actual?.id) {
+    await ctx.http().post(`/caja/${actual.id}/cerrar`).set(auth(token)).send({ efectivoContado: 0 })
+  }
+  return (await ctx.http().post('/caja/abrir').set(auth(token)).send({ sucursalId, montoApertura }).expect(201)).body
+}

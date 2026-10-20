@@ -67,6 +67,11 @@ enum EstadoOrdenCompra {
   ANULADA
 }
 
+enum EstadoCaja {
+  ABIERTA
+  CERRADA
+}
+
 enum TipoDocumentoGasto {
   FACTURA
   BOLETA
@@ -110,6 +115,7 @@ model Sucursal {
   guiasDestino  GuiaDespacho[]     @relation("GuiaDestino")
   ordenesCompra OrdenCompra[]
   gastos        GastoOperacional[]
+  sesionesCaja  SesionCaja[]
 
   @@map("sucursales")
 }
@@ -134,6 +140,7 @@ model Usuario {
   recepcionesCompra   RecepcionCompra[]
   facturasCompra      FacturaCompra[]
   dteRecibidos        DteRecibido[]
+  sesionesCaja        SesionCaja[]
 
   @@map("usuarios")
 }
@@ -212,6 +219,7 @@ model Transaccion {
   numeroFactura       String?              @map("numero_factura") @db.VarChar(50)
   metadatosSii        Json?                @map("metadatos_sii")
   transaccionOrigenId String?              @map("transaccion_origen_id") @db.Uuid
+  sesionCajaId        String?              @map("sesion_caja_id") @db.Uuid
   tipoDevolucion      TipoDevolucion?      @map("tipo_devolucion")
   observaciones       String?              @db.VarChar(300)
 
@@ -220,6 +228,7 @@ model Transaccion {
   entidad           Entidad?             @relation(fields: [entidadId], references: [id])
   transaccionOrigen Transaccion?         @relation("Retornos", fields: [transaccionOrigenId], references: [id], onDelete: Restrict)
   retornos          Transaccion[]        @relation("Retornos")
+  sesionCaja        SesionCaja?          @relation(fields: [sesionCajaId], references: [id])
   detalles          TransaccionDetalle[]
 
   @@map("transacciones")
@@ -552,4 +561,28 @@ model DteRecibido {
 
   @@unique([rutEmisor, tipoDte, folio])
   @@map("dte_recibidos")
+}
+
+// Turno de caja de un cajero en una sucursal. Las ventas y los reembolsos en efectivo se
+// ligan a la sesión abierta; al cerrar se compara el efectivo esperado con el contado.
+model SesionCaja {
+  id               String     @id @default(uuid()) @db.Uuid
+  sucursalId       String     @map("sucursal_id") @db.Uuid
+  usuarioId        String     @map("usuario_id") @db.Uuid
+  estado           EstadoCaja @default(ABIERTA)
+  montoApertura    Decimal    @map("monto_apertura") @db.Decimal(12, 2)
+  abiertaEn        DateTime   @default(now()) @map("abierta_en")
+  cerradaEn        DateTime?  @map("cerrada_en")
+  efectivoEsperado Decimal?   @map("efectivo_esperado") @db.Decimal(12, 2)
+  efectivoContado  Decimal?   @map("efectivo_contado") @db.Decimal(12, 2)
+  diferencia       Decimal?   @db.Decimal(12, 2)
+  observaciones    String?    @db.VarChar(300)
+  resumen          Json?
+
+  sucursal      Sucursal      @relation(fields: [sucursalId], references: [id])
+  usuario       Usuario       @relation(fields: [usuarioId], references: [id])
+  transacciones Transaccion[]
+
+  @@index([usuarioId, estado])
+  @@map("sesiones_caja")
 }

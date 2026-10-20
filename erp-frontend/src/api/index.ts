@@ -1,5 +1,5 @@
 import { api } from './client'
-import type { CategoriaGasto, DashboardReporte, DteRecibido, Gasto, ListadoGastos, Empresa, Entidad, OrdenCompra, UnidadMedida, GuiaDespacho, Item, Oferta, StockLocal, Sucursal, Transaccion, Usuario } from '@/types'
+import type { CategoriaGasto, SesionCaja, DashboardReporte, DteRecibido, Gasto, ListadoGastos, Empresa, Entidad, OrdenCompra, UnidadMedida, GuiaDespacho, Item, Oferta, StockLocal, Sucursal, Transaccion, Usuario } from '@/types'
 
 // Auth
 export const login = (username: string, password: string) =>
@@ -270,3 +270,14 @@ export const pagarGasto = (id: string, data: { medioPago: string; fechaPago?: st
   api.patch<Gasto>(`/gastos/${id}/pagar`, data)
 
 export const anularGasto = (id: string) => api.patch<Gasto>(`/gastos/${id}/anular`, {})
+
+// Caja
+export const getCajaActual = () => api.get<SesionCaja | null>('/caja/actual')
+
+export const abrirCaja = (data: { sucursalId: string; montoApertura: number }) => api.post<SesionCaja>('/caja/abrir', data)
+
+export const cerrarCaja = (id: string, data: { efectivoContado: number; observaciones?: string }) =>
+  api.post<SesionCaja>(`/caja/${id}/cerrar`, data)
+
+export const getSesionesCaja = (params: { sucursalId?: string; desde?: string; hasta?: string } = {}) =>
+  api.get<SesionCaja[]>('/caja/sesiones', { params })

@@ -298,3 +298,26 @@ export interface ListadoGastos {
   gastos: Gasto[]
   resumen: { costo: string; porPagar: string; porCategoria: { categoria: string; monto: string }[] }
 }
+
+export interface ResumenCaja {
+  porMedio: { medio: string; ventas: number; montoVentas: string; reembolsos: number; montoReembolsos: string }[]
+  totalVentas: string
+  efectivoEsperado: string
+}
+
+export interface SesionCaja {
+  id: string
+  sucursalId: string
+  usuarioId: string
+  estado: 'ABIERTA' | 'CERRADA'
+  montoApertura: string
+  abiertaEn: string
+  cerradaEn: string | null
+  efectivoEsperado: string | null
+  efectivoContado: string | null
+  diferencia: string | null
+  observaciones: string | null
+  resumen: ResumenCaja | null
+  sucursal?: { nombre: string }
+  usuario?: { nombreCompleto: string }
+}

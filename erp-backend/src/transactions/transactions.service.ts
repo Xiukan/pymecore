@@ -7,7 +7,8 @@ import {
 } from '@nestjs/common';
 import { createHash } from 'crypto';
 import { isUUID } from 'class-validator';
-import { Item, Prisma, TipoTransaccion } from '@prisma/client';
+import { Item, MedioPago, Prisma, TipoTransaccion } from '@prisma/client';
+import { CajaService } from '../caja/caja.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmpresaService } from '../empresa/empresa.service';
 import { SiiIntegrationService } from '../sii/sii-integration.service';
@@ -19,6 +20,7 @@ type Tx = Prisma.TransactionClient;
 
 const RETORNOS: TipoTransaccion[] = [TipoTransaccion.DEVOLUCION, TipoTransaccion.NOTA_CREDITO];
 const OPERACION = 'transactions.create:v1';
+const MEDIOS_VENTA: MedioPago[] = [MedioPago.Efectivo, MedioPago.Tarjeta, MedioPago.Transferencia];
 /** Ventas del mismo producto esperan el bloqueo de su fila de stock: se da margen sobre el límite por defecto (5 s). */
 const TX_OPCIONES = { maxWait: 10_000, timeout: 15_000 };
 
@@ -114,6 +116,9 @@ export class TransactionsService {
     if (new Set(itemIds).size !== itemIds.length) {
       throw new BadRequestException('El documento repite un ítem; agrupe las cantidades en una sola línea.');
     }
+    if (dto.tipoTransaccion === TipoTransaccion.VENTA && !MEDIOS_VENTA.includes(dto.medioPago as MedioPago)) {
+      throw new BadRequestException('Indique el medio de pago de la venta (efectivo, tarjeta o transferencia).');
+    }
     if (dto.tipoTransaccion === TipoTransaccion.COMPRA) {
       throw new BadRequestException('Las compras se registran en el módulo de Compras (orden, recepción y factura).');
     }
@@ -141,6 +146,13 @@ export class TransactionsService {
           data: { usuarioId, operacion: OPERACION, clave: idem.clave, huella: idem.huella },
         });
       }
+      // Caja: toda venta y todo reembolso en efectivo quedan en la sesión abierta del cajero.
+      const mueveCaja = dto.tipoTransaccion === TipoTransaccion.VENTA || (esRetorno && dto.medioPago === 'Efectivo');
+      const sesionCajaId = await CajaService.sesionParaMovimiento(tx, usuarioId, dto.sucursalId);
+      if (mueveCaja && !sesionCajaId) {
+        throw new BadRequestException('Abra la caja en esta sucursal antes de cobrar o reembolsar en efectivo.');
+      }
+
       const lineas = esRetorno
         ? await this.prepararRetorno(tx, dto, usuarioId, rol)
         : await this.prepararDocumento(tx, dto, itemMap, empresa.tasaIva);
@@ -173,6 +185,7 @@ export class TransactionsService {
           // Una venta queda pendiente de SII hasta que su DTE se envía; nunca nace sincronizada.
           sincronizacion: esVenta ? 'PENDIENTE' : 'SINCRONIZADO',
           transaccionOrigenId: dto.transaccionOrigenId,
+          sesionCajaId: mueveCaja ? sesionCajaId : null,
           tipoDevolucion: dto.tipoDevolucion,
           observaciones: dto.observaciones,
           motivoMerma: dto.motivoMerma,

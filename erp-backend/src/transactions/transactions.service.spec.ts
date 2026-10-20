@@ -13,6 +13,7 @@ describe('TransactionsService', () => {
   let service: TransactionsService
   let tx: any
   let prisma: any
+  let cajaAbierta: boolean
 
   const SUCURSAL_ID = 'sucursal-001'
   const ITEM_ID = 'item-001'
@@ -35,6 +36,7 @@ describe('TransactionsService', () => {
   })
 
   beforeEach(async () => {
+    cajaAbierta = true
     tx = {
       oferta: { findMany: jest.fn().mockResolvedValue([]) },
       stockLocal: {
@@ -52,7 +54,13 @@ describe('TransactionsService', () => {
         findUnique: jest.fn(),
       },
       transaccionDetalle: { groupBy: jest.fn().mockResolvedValue([]) },
-      $queryRaw: jest.fn().mockResolvedValue([{ numero: 1 }]),
+      // Responde según la consulta: caja abierta del cajero y folio libre.
+      $queryRaw: jest.fn().mockImplementation((sql: TemplateStringsArray) => {
+        const texto = sql.join('?')
+        if (texto.includes('sesiones_caja')) return Promise.resolve(cajaAbierta ? [{ id: 'caja-1' }] : [])
+        if (texto.includes('folios_disponibles')) return Promise.resolve([{ numero: 1 }])
+        return Promise.resolve([])
+      }),
       operacionIdempotente: { create: jest.fn(), update: jest.fn() },
     }
     prisma = {
@@ -140,6 +148,17 @@ describe('TransactionsService', () => {
     expect(linea.subtotal).toEqual(D(10470))
     expect(linea.montoIva).toEqual(D(1672))
     expect(venta.sincronizacion).toBe('PENDIENTE')
+  })
+
+  it('sin caja abierta no se vende', async () => {
+    cajaAbierta = false
+    await expect(service.create(buildDto(1) as any, 'user-001')).rejects.toThrow(/Abra la caja/)
+  })
+
+  it('la venta queda ligada a la sesión de caja y exige medio de pago', async () => {
+    await service.create(buildDto(1) as any, 'user-001')
+    expect(tx.transaccion.create.mock.calls[0][0].data.sesionCajaId).toBe('caja-1')
+    await expect(service.create(buildDto(1, { medioPago: undefined }) as any, 'user-001')).rejects.toThrow(/medio de pago/)
   })
 
   it('rechaza compras: se registran en el módulo de Compras', async () => {

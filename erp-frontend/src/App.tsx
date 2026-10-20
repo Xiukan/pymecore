@@ -15,6 +15,7 @@ import ClientesPage from '@/pages/ClientesPage'
 import UsuariosPage from '@/pages/UsuariosPage'
 import ComprasPage from '@/pages/ComprasPage'
 import GastosPage from '@/pages/GastosPage'
+import CajaPage from '@/pages/CajaPage'
 import ConfiguracionPage from '@/pages/ConfiguracionPage'
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
@@ -61,6 +62,7 @@ export default function App() {
             <Route path="usuarios" element={<UsuariosPage />} />
             <Route path="compras" element={<ComprasPage />} />
             <Route path="gastos" element={<GastosPage />} />
+            <Route path="caja" element={<CajaPage />} />
             <Route path="configuracion" element={<ConfiguracionPage />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />

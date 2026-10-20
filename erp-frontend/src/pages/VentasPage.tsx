@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useAuth } from '@/context/AuthContext'
+import CajaPos from '@/components/CajaPos'
 import { rutSinPuntos, useEmpresa } from '@/hooks/useEmpresa'
 import { nuevoUuid } from '@/utils/uuid'
 import { getItems, getStock, getSucursales, createTransaccion, getEntidadByRut, createEntidad, getOfertas, ejecutarSync } from '@/api'
@@ -43,6 +44,9 @@ export default function VentasPage() {
   const online = useOnlineStatus()
   const [sucursales, setSucursales] = useState<Sucursal[]>([])
   const [sucursalId, setSucursalId] = useState(user?.sucursalId ?? '')
+  const [medioPago, setMedioPago] = useState<'Efectivo' | 'Tarjeta' | 'Transferencia'>('Efectivo')
+  const [cajaAbierta, setCajaAbierta] = useState(false)
+  const [versionCaja, setVersionCaja] = useState(0)
   const [items, setItems] = useState<Item[]>([])
   const [ofertaMap, setOfertaMap] = useState<Map<string, number>>(new Map())
   const [stockMap, setStockMap] = useState<Map<string, number>>(new Map())
@@ -249,7 +253,7 @@ export default function VentasPage() {
         sucursalId,
         entidadId,
         tipoTransaccion: 'VENTA',
-        medioPago: 'Efectivo',
+        medioPago,
         rutReceptor: rutFinal || undefined,
         razonSocialReceptor: razonSocial || undefined,
         tipoDocumento: tipoDoc,
@@ -259,6 +263,7 @@ export default function VentasPage() {
       const dte = (res.data as any)?.dte
       const folio = dte?.folio ?? (res.data as any)?.numeroFactura ?? '?'
       setUltimaVenta({ dte, transaccion: res.data, lineas: [...lineas], rutFinal, razonSocial, tipoDoc })
+      setVersionCaja((v) => v + 1)
       setLineas([])
       setBusqueda('')
       const estadoSii = online ? 'enviada al SII' : 'pendiente de envío (sin conexión)'
@@ -292,7 +297,7 @@ export default function VentasPage() {
       emisor: empresa,
       rutReceptor: rut || empresa.rutConsumidorFinal,
       razonSocialReceptor: rs || empresa.nombreConsumidorFinal,
-      medioPago: 'Efectivo',
+      medioPago: transaccion.medioPago ?? 'Efectivo',
       sucursal: '',
       detalles: ls.map((l: LineaVenta) => ({ nombre: l.nombre, cantidad: l.cantidad, precio: l.precioUnitario, subtotal: l.precioUnitario * l.cantidad })),
       montoTotal: Math.round(ls.reduce((s: number, l: LineaVenta) => s + l.precioUnitario * l.cantidad, 0)),
@@ -422,6 +427,18 @@ export default function VentasPage() {
           </div>
         </div>
 
+        <CajaPos sucursalId={sucursalId} version={versionCaja} onCambio={setCajaAbierta} />
+
+        {/* Medio de pago */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+          {(['Efectivo', 'Tarjeta', 'Transferencia'] as const).map((m) => (
+            <div key={m} onClick={() => setMedioPago(m)}
+              style={{ padding: '8px', border: `2px solid ${medioPago === m ? '#3182ce' : '#e2e8f0'}`, borderRadius: 10, textAlign: 'center', cursor: 'pointer', fontSize: 12, fontWeight: 600, background: medioPago === m ? '#ebf8ff' : 'white', color: medioPago === m ? '#2b6cb0' : '#718096' }}>
+              {m}
+            </div>
+          ))}
+        </div>
+
         {/* Tipo documento */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
           {([39, 33] as const).map((t) => (
@@ -535,7 +552,7 @@ export default function VentasPage() {
 
         <button
           onClick={handleCobrar}
-          disabled={loading || lineas.length === 0 || !sucursalId}
+          disabled={loading || lineas.length === 0 || !sucursalId || !cajaAbierta}
           style={{
             width: '100%', padding: '18px',
             background: lineas.length === 0 || loading ? '#e2e8f0' : 'linear-gradient(135deg, #38a169, #48bb78)',

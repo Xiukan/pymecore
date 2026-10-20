@@ -5,6 +5,7 @@ import { ThrottlerModule } from '@nestjs/throttler';
 import { UsuarioIpThrottlerGuard } from './auth/guards/throttler.guard';
 import { AppController } from './app.controller';
 import { AuthModule } from './auth/auth.module';
+import { CajaModule } from './caja/caja.module';
 import { ComprasModule } from './compras/compras.module';
 import { EmpresaModule } from './empresa/empresa.module';
 import { GastosModule } from './gastos/gastos.module';
@@ -42,6 +43,7 @@ import { UsuariosModule } from './usuarios/usuarios.module';
     EmpresaModule,
     ComprasModule,
     GastosModule,
+    CajaModule,
   ],
 })
 export class AppModule {}

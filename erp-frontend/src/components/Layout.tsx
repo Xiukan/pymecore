@@ -7,6 +7,7 @@ import { useSyncPendientes } from '@/hooks/useSyncPendientes'
 const navItems = [
   { to: '/', label: 'Dashboard', end: true, roles: null },
   { to: '/ventas', label: 'Ventas POS', end: false, roles: null },
+  { to: '/caja', label: 'Cajas', end: false, roles: null },
   { to: '/inventario', label: 'Inventario', end: false, roles: null },
   { to: '/historial', label: 'Historial ventas', end: false, roles: null },
   { to: '/mermas', label: 'Mermas', end: false, roles: ['Administrador', 'Encargado'] },
