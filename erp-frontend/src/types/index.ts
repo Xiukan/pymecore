@@ -38,6 +38,8 @@ export interface Entidad {
   email: string | null
   direccion?: string | null
   estado: string
+  cupoCredito?: string
+  diasCredito?: number
 }
 
 export interface StockLocal {
@@ -354,4 +356,21 @@ export interface ResumenIva {
   remanente: string
   retencionHonorarios: string
   totalAPagar: string
+}
+
+export type Tramos = { porVencer: string; d1a30: string; d31a60: string; d61a90: string; mas90: string }
+
+export interface PorCobrar {
+  porTramo: Tramos
+  clientes: {
+    cliente: { id: string; rut?: string; nombre?: string }
+    saldo: string
+    porTramo: Tramos
+    documentos: { transaccionId: string; folio: string | null; fecha: string; vencimiento: string; total: string; saldo: string }[]
+  }[]
+}
+
+export interface PorPagar {
+  porTramo: Tramos
+  documentos: { tipo: 'FACTURA_COMPRA' | 'GASTO'; id: string; documento: string; proveedor: string; rut: string; vencimiento: string; saldo: string }[]
 }

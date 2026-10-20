@@ -18,4 +18,10 @@ describe('arqueo de caja', () => {
   it('sin movimientos el esperado es el fondo inicial', () => {
     expect(resumir(15000, []).efectivoEsperado).toBe('15000')
   })
+
+  it('los abonos de clientes en efectivo entran al esperado; las ventas a crédito no', () => {
+    const r = resumir(10000, [{ tipoTransaccion: 'VENTA', medioPago: 'Credito', montoTotal: 50000 }], 7000)
+    expect(r.efectivoEsperado).toBe('17000')
+    expect(r.abonosEfectivo).toBe('7000')
+  })
 })

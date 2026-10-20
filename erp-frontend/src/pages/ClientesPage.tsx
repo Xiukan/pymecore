@@ -1,11 +1,30 @@
 import { useEffect, useState } from 'react'
 import { api } from '@/api/client'
+import { updateEntidad } from '@/api'
+import { useAuth } from '@/context/AuthContext'
 import type { Entidad } from '@/types'
 
 export default function ClientesPage() {
   const [clientes, setClientes] = useState<Entidad[]>([])
   const [loading, setLoading] = useState(true)
   const [busqueda, setBusqueda] = useState('')
+  const { user } = useAuth()
+  const gestiona = user?.rol === 'Administrador' || user?.rol === 'Encargado'
+  const [editando, setEditando] = useState<{ id: string; cupo: string; dias: string } | null>(null)
+  const [error, setError] = useState('')
+
+  const guardarCredito = async () => {
+    if (!editando) return
+    setError('')
+    try {
+      await updateEntidad(editando.id, { cupoCredito: Number(editando.cupo || 0), diasCredito: Number(editando.dias || 0) })
+      setEditando(null)
+      cargar()
+    } catch (e: any) {
+      const msg = e?.response?.data?.message ?? 'No se pudo guardar'
+      setError(Array.isArray(msg) ? msg.join(', ') : msg)
+    }
+  }
 
   const cargar = () => {
     setLoading(true)
@@ -29,6 +48,7 @@ export default function ClientesPage() {
         <h1 className="text-xl font-semibold text-gray-900">Clientes</h1>
       </div>
 
+      {error && <p className="text-sm text-red-600">{error}</p>}
       <input
         type="text"
         placeholder="Buscar por nombre o RUT..."
@@ -49,6 +69,7 @@ export default function ClientesPage() {
                 <th className="px-4 py-3 text-left">Email</th>
                 <th className="px-4 py-3 text-left">Telefono</th>
                 <th className="px-4 py-3 text-left">Estado</th>
+                <th className="px-4 py-3 text-right">Crédito</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -69,11 +90,31 @@ export default function ClientesPage() {
                       {c.estado}
                     </span>
                   </td>
+                  <td className="px-4 py-3 text-right whitespace-nowrap">
+                    {editando?.id === c.id ? (
+                      <span className="inline-flex gap-1 items-center">
+                        <input type="number" min="0" placeholder="Cupo" value={editando.cupo} onChange={(e) => setEditando({ ...editando, cupo: e.target.value })} className="w-24 border border-gray-300 rounded px-2 py-1 text-xs" />
+                        <input type="number" min="0" placeholder="Días" value={editando.dias} onChange={(e) => setEditando({ ...editando, dias: e.target.value })} className="w-16 border border-gray-300 rounded px-2 py-1 text-xs" />
+                        <button onClick={guardarCredito} className="text-xs text-blue-600">Guardar</button>
+                      </span>
+                    ) : (
+                      <>
+                        <span className="text-xs text-gray-600">
+                          {Number(c.cupoCredito ?? 0) > 0 ? `$${Math.round(Number(c.cupoCredito)).toLocaleString('es-CL')} · ${c.diasCredito} días` : 'Sin crédito'}
+                        </span>
+                        {gestiona && (
+                          <button onClick={() => setEditando({ id: c.id, cupo: String(Math.round(Number(c.cupoCredito ?? 0))), dias: String(c.diasCredito ?? 30) })} className="ml-2 text-xs text-blue-600">
+                            Editar
+                          </button>
+                        )}
+                      </>
+                    )}
+                  </td>
                 </tr>
               ))}
               {filtrado.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-4 py-6 text-center text-gray-400">
+                  <td colSpan={6} className="px-4 py-6 text-center text-gray-400">
                     Sin registros
                   </td>
                 </tr>

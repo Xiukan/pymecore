@@ -20,13 +20,16 @@ export interface LineaResumen {
 export interface ResumenCaja {
   porMedio: LineaResumen[];
   totalVentas: string;
+  /** Pagos de clientes a crédito recibidos en efectivo durante la sesión. */
+  abonosEfectivo: string;
   efectivoEsperado: string;
 }
 
-/** Arqueo: fondo inicial + ventas en efectivo − reembolsos en efectivo de la sesión. */
+/** Arqueo: fondo inicial + ventas en efectivo − reembolsos en efectivo + abonos en efectivo de la sesión. */
 export function resumir(
   montoApertura: Prisma.Decimal.Value,
   movimientos: { tipoTransaccion: TipoTransaccion; medioPago: MedioPago; montoTotal: Prisma.Decimal.Value }[],
+  abonosEfectivo: Prisma.Decimal.Value = 0,
 ): ResumenCaja {
   const porMedio = new Map<MedioPago, { ventas: number; montoVentas: Prisma.Decimal; reembolsos: number; montoReembolsos: Prisma.Decimal }>();
   let totalVentas = new D(0);
@@ -43,7 +46,7 @@ export function resumir(
     porMedio.set(m.medioPago, fila);
   }
   const efectivo = porMedio.get('Efectivo');
-  const esperado = new D(montoApertura).add(efectivo?.montoVentas ?? 0).sub(efectivo?.montoReembolsos ?? 0);
+  const esperado = new D(montoApertura).add(efectivo?.montoVentas ?? 0).sub(efectivo?.montoReembolsos ?? 0).add(abonosEfectivo);
   return {
     porMedio: [...porMedio.entries()].map(([medio, f]) => ({
       medio,
@@ -53,6 +56,7 @@ export function resumir(
       montoReembolsos: f.montoReembolsos.toString(),
     })),
     totalVentas: totalVentas.toString(),
+    abonosEfectivo: new D(abonosEfectivo).toString(),
     efectivoEsperado: esperado.toString(),
   };
 }
@@ -153,6 +157,10 @@ export class CajaService {
       where: { sesionCajaId: sesionId, estado: 'Activa' },
       select: { tipoTransaccion: true, medioPago: true, montoTotal: true },
     });
-    return resumir(montoApertura, movimientos);
+    const abonos = await db.abonoCliente.aggregate({
+      where: { sesionCajaId: sesionId, estado: 'VIGENTE', medioPago: 'Efectivo' },
+      _sum: { monto: true },
+    });
+    return resumir(montoApertura, movimientos, abonos._sum.monto ?? 0);
   }
 }

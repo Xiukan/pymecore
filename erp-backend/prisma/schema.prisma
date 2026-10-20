@@ -39,6 +39,7 @@ enum MedioPago {
   Efectivo
   Tarjeta
   Transferencia
+  Credito
   NoAplica      @map("No Aplica")
 }
 
@@ -141,6 +142,7 @@ model Usuario {
   facturasCompra      FacturaCompra[]
   dteRecibidos        DteRecibido[]
   sesionesCaja        SesionCaja[]
+  abonos              AbonoCliente[]
 
   @@map("usuarios")
 }
@@ -154,6 +156,9 @@ model Entidad {
   email             String?       @db.VarChar(100)
   direccion         String?
   estado            EstadoGeneral @default(Activo)
+  // Venta a crédito: monto máximo adeudado y plazo de pago en días.
+  cupoCredito       Decimal       @default(0) @map("cupo_credito") @db.Decimal(12, 2)
+  diasCredito       Int           @default(30) @map("dias_credito")
   creadoEn          DateTime      @default(now()) @map("creado_en")
 
   transacciones  Transaccion[]
@@ -229,6 +234,7 @@ model Transaccion {
   transaccionOrigen Transaccion?         @relation("Retornos", fields: [transaccionOrigenId], references: [id], onDelete: Restrict)
   retornos          Transaccion[]        @relation("Retornos")
   sesionCaja        SesionCaja?          @relation(fields: [sesionCajaId], references: [id])
+  abonos            AbonoCliente[]
   detalles          TransaccionDetalle[]
 
   @@map("transacciones")
@@ -497,6 +503,9 @@ model FacturaCompra {
   montoNeto        Decimal               @map("monto_neto") @db.Decimal(12, 2)
   montoIva         Decimal               @map("monto_iva") @db.Decimal(12, 2)
   montoTotal       Decimal               @map("monto_total") @db.Decimal(12, 2)
+  estadoPago       EstadoPago            @default(POR_PAGAR) @map("estado_pago")
+  fechaPago        DateTime?             @map("fecha_pago") @db.Date
+  medioPago        MedioPago?            @map("medio_pago")
   creadoEn         DateTime              @default(now()) @map("creado_en")
 
   orden     OrdenCompra            @relation(fields: [ordenId], references: [id])
@@ -579,10 +588,30 @@ model SesionCaja {
   observaciones    String?    @db.VarChar(300)
   resumen          Json?
 
-  sucursal      Sucursal      @relation(fields: [sucursalId], references: [id])
-  usuario       Usuario       @relation(fields: [usuarioId], references: [id])
+  sucursal      Sucursal       @relation(fields: [sucursalId], references: [id])
+  usuario       Usuario        @relation(fields: [usuarioId], references: [id])
   transacciones Transaccion[]
+  abonos        AbonoCliente[]
 
   @@index([usuarioId, estado])
   @@map("sesiones_caja")
+}
+
+// Pago parcial o total de una venta a crédito. Los abonos en efectivo entran a la caja.
+model AbonoCliente {
+  id            String                @id @default(uuid()) @db.Uuid
+  transaccionId String                @map("transaccion_id") @db.Uuid
+  usuarioId     String                @map("usuario_id") @db.Uuid
+  sesionCajaId  String?               @map("sesion_caja_id") @db.Uuid
+  monto         Decimal               @db.Decimal(12, 2)
+  medioPago     MedioPago             @map("medio_pago")
+  estado        EstadoDocumentoCompra @default(VIGENTE)
+  fecha         DateTime              @default(now())
+
+  transaccion Transaccion @relation(fields: [transaccionId], references: [id])
+  usuario     Usuario     @relation(fields: [usuarioId], references: [id])
+  sesionCaja  SesionCaja? @relation(fields: [sesionCajaId], references: [id])
+
+  @@index([transaccionId])
+  @@map("abonos_cliente")
 }

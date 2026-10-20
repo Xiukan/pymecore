@@ -35,3 +35,17 @@ export function rutConDv(cuerpo: string): string {
   return `${limpio}-${calcularDv(limpio)}`
 }
 
+
+/**
+ * RUT tal como lo escribe el cajero: con guion se respeta el dígito verificador ingresado
+ * (y se valida); sin guion el número es el cuerpo y el dígito se calcula.
+ */
+export function interpretarRut(entrada: string): { rut: string; valido: boolean; dvEsperado: string } {
+  const texto = entrada.replace(/[.\s]/g, '').toUpperCase()
+  const [cuerpoBruto, dvIngresado] = texto.includes('-') ? texto.split('-', 2) : [texto, undefined]
+  const cuerpo = cuerpoBruto.replace(/\D/g, '')
+  const dvEsperado = cuerpo ? calcularDv(cuerpo).toUpperCase() : ''
+  const dv = dvIngresado === undefined ? dvEsperado : dvIngresado
+  const rut = cuerpo ? `${cuerpo}-${dv}` : ''
+  return { rut, valido: !!cuerpo && dv === dvEsperado, dvEsperado }
+}

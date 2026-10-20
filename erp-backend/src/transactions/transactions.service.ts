@@ -9,6 +9,7 @@ import { createHash } from 'crypto';
 import { isUUID } from 'class-validator';
 import { Item, MedioPago, Prisma, TipoTransaccion } from '@prisma/client';
 import { CajaService } from '../caja/caja.service';
+import { CuentasService } from '../cuentas/cuentas.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmpresaService } from '../empresa/empresa.service';
 import { SiiIntegrationService } from '../sii/sii-integration.service';
@@ -21,7 +22,7 @@ type Tx = Prisma.TransactionClient;
 
 const RETORNOS: TipoTransaccion[] = [TipoTransaccion.DEVOLUCION, TipoTransaccion.NOTA_CREDITO];
 const OPERACION = 'transactions.create:v1';
-const MEDIOS_VENTA: MedioPago[] = [MedioPago.Efectivo, MedioPago.Tarjeta, MedioPago.Transferencia];
+const MEDIOS_VENTA: MedioPago[] = [MedioPago.Efectivo, MedioPago.Tarjeta, MedioPago.Transferencia, MedioPago.Credito];
 
 /** JSON con claves ordenadas: el mismo contenido produce siempre la misma huella. */
 function canonico(valor: unknown): string {
@@ -116,7 +117,7 @@ export class TransactionsService {
       throw new BadRequestException('El documento repite un ítem; agrupe las cantidades en una sola línea.');
     }
     if (dto.tipoTransaccion === TipoTransaccion.VENTA && !MEDIOS_VENTA.includes(dto.medioPago as MedioPago)) {
-      throw new BadRequestException('Indique el medio de pago de la venta (efectivo, tarjeta o transferencia).');
+      throw new BadRequestException('Indique el medio de pago de la venta (efectivo, tarjeta, transferencia o crédito).');
     }
     if (dto.tipoTransaccion === TipoTransaccion.COMPRA) {
       throw new BadRequestException('Las compras se registran en el módulo de Compras (orden, recepción y factura).');
@@ -170,6 +171,7 @@ export class TransactionsService {
       }
 
       const montoTotal = lineas.reduce((s, l) => s.add(l.subtotal), ZERO);
+      if (dto.medioPago === MedioPago.Credito) await this.validarCredito(tx, dto, montoTotal);
       const esVenta = dto.tipoTransaccion === TipoTransaccion.VENTA;
       const tipoDoc = dto.tipoDocumento ?? 39;
       const creada = await tx.transaccion.create({
@@ -248,6 +250,35 @@ export class TransactionsService {
       data: { metadatosSii: dte as any },
     });
     return { ...creada, numeroFactura: String(folio), dte };
+  }
+
+  /**
+   * Crédito: la venta exige un cliente con cupo disponible; la devolución imputada a la deuda
+   * solo cabe sobre una venta a crédito y hasta su saldo. El bloqueo del cliente impide que
+   * dos ventas simultáneas sobrepasen el cupo.
+   */
+  private async validarCredito(tx: Tx, dto: CreateTransactionDto, monto: Prisma.Decimal) {
+    if (dto.tipoTransaccion === TipoTransaccion.VENTA) {
+      if (!dto.entidadId) throw new BadRequestException('La venta a crédito requiere identificar al cliente.');
+      await tx.$queryRaw`SELECT id FROM entidades WHERE id = ${dto.entidadId}::uuid FOR UPDATE`;
+      const cliente = await tx.entidad.findUnique({ where: { id: dto.entidadId } });
+      if (!cliente || cliente.cupoCredito.lte(0)) throw new BadRequestException('El cliente no tiene crédito habilitado.');
+      const deuda = await CuentasService.deudaCliente(tx, cliente.id);
+      if (deuda.add(monto).gt(cliente.cupoCredito)) {
+        throw new BadRequestException(
+          `La venta supera el cupo de crédito: cupo $${cliente.cupoCredito}, deuda actual $${deuda}, venta $${monto}.`,
+        );
+      }
+      return;
+    }
+    const origen = await tx.transaccion.findUniqueOrThrow({ where: { id: dto.transaccionOrigenId } });
+    if (origen.medioPago !== MedioPago.Credito) {
+      throw new BadRequestException('Solo una venta a crédito admite rebajar la deuda; reembolse con el medio correspondiente.');
+    }
+    const saldo = await CuentasService.saldoVenta(tx, origen.id);
+    if (monto.gt(saldo)) {
+      throw new BadRequestException(`La devolución supera el saldo adeudado ($${saldo}); reembolse la diferencia con otro medio.`);
+    }
   }
 
   /** Venta: precio vigente del servidor. Merma: valorizada a costo. */

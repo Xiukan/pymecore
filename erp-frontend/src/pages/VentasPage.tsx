@@ -5,7 +5,7 @@ import { rutSinPuntos, useEmpresa } from '@/hooks/useEmpresa'
 import { nuevoUuid } from '@/utils/uuid'
 import { getItems, getStock, getSucursales, createTransaccion, getEntidadByRut, createEntidad, getOfertas, ejecutarSync } from '@/api'
 import { useOnlineStatus } from '@/hooks/useOnlineStatus'
-import { validarRut, calcularDv, rutConDv } from '@/utils/rut'
+import { calcularDv, interpretarRut, rutConDv } from '@/utils/rut'
 import { generarPdfBoleta } from '@/utils/pdfBoleta'
 import type { Entidad, Item, Oferta, StockLocal, Sucursal } from '@/types'
 
@@ -44,7 +44,7 @@ export default function VentasPage() {
   const online = useOnlineStatus()
   const [sucursales, setSucursales] = useState<Sucursal[]>([])
   const [sucursalId, setSucursalId] = useState(user?.sucursalId ?? '')
-  const [medioPago, setMedioPago] = useState<'Efectivo' | 'Tarjeta' | 'Transferencia'>('Efectivo')
+  const [medioPago, setMedioPago] = useState<'Efectivo' | 'Tarjeta' | 'Transferencia' | 'Credito'>('Efectivo')
   const [cajaAbierta, setCajaAbierta] = useState(false)
   const [versionCaja, setVersionCaja] = useState(0)
   const [items, setItems] = useState<Item[]>([])
@@ -120,22 +120,10 @@ export default function VentasPage() {
   }
 
   const buscarCliente = async () => {
-    const limpio = rutInput.replace(/[.\-]/g, '').toUpperCase()
-    if (!limpio) { setRutError('Ingresa un RUT'); return }
-
-    let rutFormateado: string
-    if (limpio.length >= 2 && !limpio.includes('-')) {
-      const cuerpo = limpio.replace(/[kK]/g, '')
-      const dvCalculado = calcularDv(cuerpo)
-      rutFormateado = `${cuerpo}-${dvCalculado}`
-    } else {
-      rutFormateado = limpio
-    }
-
-    if (!validarRut(rutFormateado)) {
-      const cuerpo = limpio.replace(/[kK-]/g, '')
-      const dvEsperado = calcularDv(cuerpo)
-      setRutError(`RUT inválido. Dígito verificador correcto: ${dvEsperado.toUpperCase()}`)
+    const { rut: rutFormateado, valido, dvEsperado } = interpretarRut(rutInput)
+    if (!rutFormateado) { setRutError('Ingresa un RUT'); return }
+    if (!valido) {
+      setRutError(`RUT inválido. Dígito verificador correcto: ${dvEsperado}`)
       return
     }
 
@@ -430,11 +418,12 @@ export default function VentasPage() {
         <CajaPos sucursalId={sucursalId} version={versionCaja} onCambio={setCajaAbierta} />
 
         {/* Medio de pago */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
-          {(['Efectivo', 'Tarjeta', 'Transferencia'] as const).map((m) => (
+        <div style={{ display: 'grid', gridTemplateColumns: entidadId ? '1fr 1fr 1fr 1fr' : '1fr 1fr 1fr', gap: 8 }}>
+          {/* Crédito solo con cliente identificado; el servidor valida su cupo. */}
+          {(entidadId ? (['Efectivo', 'Tarjeta', 'Transferencia', 'Credito'] as const) : (['Efectivo', 'Tarjeta', 'Transferencia'] as const)).map((m) => (
             <div key={m} onClick={() => setMedioPago(m)}
               style={{ padding: '8px', border: `2px solid ${medioPago === m ? '#3182ce' : '#e2e8f0'}`, borderRadius: 10, textAlign: 'center', cursor: 'pointer', fontSize: 12, fontWeight: 600, background: medioPago === m ? '#ebf8ff' : 'white', color: medioPago === m ? '#2b6cb0' : '#718096' }}>
-              {m}
+              {m === 'Credito' ? 'Crédito' : m}
             </div>
           ))}
         </div>
