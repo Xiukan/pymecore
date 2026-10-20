@@ -17,6 +17,8 @@ const CAMPOS: { campo: CampoEmpresa; label: string; tipo?: 'number'; ayuda?: str
   { campo: 'diasCambio', label: 'Plazo para cambios (días)', tipo: 'number' },
   { campo: 'rutConsumidorFinal', label: 'RUT consumidor final', ayuda: 'Se usa en boletas sin RUT de cliente' },
   { campo: 'nombreConsumidorFinal', label: 'Nombre consumidor final' },
+  { campo: 'topeGastoSinDocumento', label: 'Tope gasto sin documento ($)', tipo: 'number' },
+  { campo: 'tasaRetencionHonorarios', label: 'Retención boletas de honorarios (%)', tipo: 'number', ayuda: 'Tasa vigente según el SII para el año' },
 ]
 
 const mensajeError = (e: any) => {
@@ -44,7 +46,13 @@ export default function ConfiguracionPage() {
     setGuardando(true)
     setAviso(null)
     try {
-      await updateEmpresa({ ...form, tasaIva: Number(form.tasaIva), diasCambio: Number(form.diasCambio) })
+      await updateEmpresa({
+        ...form,
+        tasaIva: Number(form.tasaIva),
+        diasCambio: Number(form.diasCambio),
+        topeGastoSinDocumento: Number(form.topeGastoSinDocumento),
+        tasaRetencionHonorarios: Number(form.tasaRetencionHonorarios),
+      })
       invalidarEmpresa()
       setAviso({ ok: true, texto: 'Datos de la empresa actualizados.' })
     } catch (e) {

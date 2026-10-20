@@ -34,6 +34,20 @@ export class UpdateEmpresaDto {
   rutConsumidorFinal?: string;
 
   @ApiPropertyOptional() @IsString() @MinLength(1) @MaxLength(100) @IsOptional() nombreConsumidorFinal?: string;
+
+  @ApiPropertyOptional({ example: 50000, description: 'Monto máximo de un gasto sin documento' })
+  @IsInt()
+  @Min(0)
+  @Max(10_000_000)
+  @IsOptional()
+  topeGastoSinDocumento?: number;
+
+  @ApiPropertyOptional({ example: 15.25, description: 'Retención de boletas de honorarios (%)' })
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(100)
+  @IsOptional()
+  tasaRetencionHonorarios?: number;
 }
 
 export class CreateUnidadDto {

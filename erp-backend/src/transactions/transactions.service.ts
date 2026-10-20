@@ -19,6 +19,8 @@ type Tx = Prisma.TransactionClient;
 
 const RETORNOS: TipoTransaccion[] = [TipoTransaccion.DEVOLUCION, TipoTransaccion.NOTA_CREDITO];
 const OPERACION = 'transactions.create:v1';
+/** Ventas del mismo producto esperan el bloqueo de su fila de stock: se da margen sobre el límite por defecto (5 s). */
+const TX_OPCIONES = { maxWait: 10_000, timeout: 15_000 };
 
 /** JSON con claves ordenadas: el mismo contenido produce siempre la misma huella. */
 function canonico(valor: unknown): string {
@@ -196,7 +198,7 @@ export class TransactionsService {
         await tx.transaccion.update({ where: { id: creada.id }, data: { numeroFactura: String(folio) } });
       }
       return { creada, folio, tipoDoc };
-    });
+    }, TX_OPCIONES);
 
     const { creada, folio, tipoDoc } = transaccion;
     if (dto.tipoTransaccion !== TipoTransaccion.VENTA) return creada;

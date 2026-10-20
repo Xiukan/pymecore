@@ -164,6 +164,8 @@ export interface Empresa {
   diasCambio: number
   rutConsumidorFinal: string
   nombreConsumidorFinal: string
+  topeGastoSinDocumento: number
+  tasaRetencionHonorarios: string
 }
 
 export interface UnidadMedida {
@@ -258,4 +260,41 @@ export interface DteRecibido {
   creadoEn: string
   proveedor: { id: string; rut: string; nombreRazonSocial: string }
   usuario: { nombreCompleto: string }
+}
+
+export type TipoDocumentoGasto = 'FACTURA' | 'BOLETA' | 'BOLETA_HONORARIOS' | 'SIN_DOCUMENTO'
+export type MedioPagoGasto = 'Efectivo' | 'Tarjeta' | 'Transferencia'
+
+export interface CategoriaGasto {
+  id: string
+  nombre: string
+  ivaRecuperable: boolean
+  activa: boolean
+}
+
+export interface Gasto {
+  id: string
+  descripcion: string
+  tipoDocumento: TipoDocumentoGasto
+  numeroDocumento: string | null
+  montoNeto: string
+  iva: string
+  retencion: string
+  total: string
+  monto: string
+  fechaRegistro: string
+  fechaVencimiento: string | null
+  estadoPago: 'POR_PAGAR' | 'PAGADO'
+  fechaPago: string | null
+  medioPago: string | null
+  categoria: { id: string; nombre: string; ivaRecuperable: boolean }
+  sucursal: { id: string; nombre: string } | null
+  proveedor: { id: string; rut: string; nombreRazonSocial: string } | null
+  usuario: { nombreCompleto: string }
+  dte: { id: string; tipoDte: number; folio: string } | null
+}
+
+export interface ListadoGastos {
+  gastos: Gasto[]
+  resumen: { costo: string; porPagar: string; porCategoria: { categoria: string; monto: string }[] }
 }

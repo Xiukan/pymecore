@@ -12,8 +12,8 @@ test.describe('Autenticación', () => {
     await page.getByLabel('Contraseña').fill('vend1234')
     await page.getByRole('button', { name: 'Ingresar' }).click()
 
-    await expect(page.getByText('Ventas del periodo')).toBeVisible()
-    await expect(page.getByText('Ventas del periodo')).toBeVisible()
+    await expect(page.getByText('Dashboard comercial')).toBeVisible()
+    await expect(page.getByText('Dashboard comercial')).toBeVisible()
   })
 
   test('vendedor puede navegar al POS desde el menú', async ({ page }) => {
@@ -21,7 +21,7 @@ test.describe('Autenticación', () => {
     await page.getByLabel('Usuario').fill('vendedor1')
     await page.getByLabel('Contraseña').fill('vend1234')
     await page.getByRole('button', { name: 'Ingresar' }).click()
-    await expect(page.getByText('Ventas del periodo')).toBeVisible()
+    await expect(page.getByText('Dashboard comercial')).toBeVisible()
 
     await page.getByText('Ventas POS').click()
     await expect(page).toHaveURL(/ventas/)
@@ -44,7 +44,7 @@ test.describe('Autenticación', () => {
     await page.getByLabel('Contraseña').fill('admin1234')
     await page.getByRole('button', { name: 'Ingresar' }).click()
 
-    await expect(page.getByText('Ventas del periodo')).toBeVisible()
-    await expect(page.getByText('Ventas del periodo')).toBeVisible()
+    await expect(page.getByText('Dashboard comercial')).toBeVisible()
+    await expect(page.getByText('Dashboard comercial')).toBeVisible()
   })
 })

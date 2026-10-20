@@ -1,5 +1,5 @@
 import { api } from './client'
-import type { DashboardReporte, DteRecibido, Empresa, Entidad, OrdenCompra, UnidadMedida, GuiaDespacho, Item, Oferta, StockLocal, Sucursal, Transaccion, Usuario } from '@/types'
+import type { CategoriaGasto, DashboardReporte, DteRecibido, Gasto, ListadoGastos, Empresa, Entidad, OrdenCompra, UnidadMedida, GuiaDespacho, Item, Oferta, StockLocal, Sucursal, Transaccion, Usuario } from '@/types'
 
 // Auth
 export const login = (username: string, password: string) =>
@@ -182,7 +182,9 @@ export const getDashboard = (params: {
 // Empresa y catálogos
 export const getEmpresa = () => api.get<Empresa>('/empresa')
 
-export const updateEmpresa = (data: Partial<Omit<Empresa, 'id' | 'tasaIva'>> & { tasaIva?: number }) =>
+export const updateEmpresa = (
+  data: Partial<Omit<Empresa, 'id' | 'tasaIva' | 'tasaRetencionHonorarios'>> & { tasaIva?: number; tasaRetencionHonorarios?: number },
+) =>
   api.patch<Empresa>('/empresa', data)
 
 export const getUnidades = () => api.get<UnidadMedida[]>('/unidades')
@@ -233,8 +235,38 @@ export const importarDte = (xml: string) => api.post<DteRecibido>('/compras/dte'
 export const getDtes = (estado?: string) =>
   api.get<DteRecibido[]>('/compras/dte', { params: estado ? { estado } : undefined })
 
-export const registrarGastoDte = (id: string, data: { categoria: string; descripcion?: string }) =>
+export const registrarGastoDte = (id: string, data: { categoriaId: string; descripcion?: string }) =>
   api.post<DteRecibido>(`/compras/dte/${id}/gasto`, data)
 
 export const descartarDte = (id: string, motivo: string) =>
   api.patch<DteRecibido>(`/compras/dte/${id}/descartar`, { motivo })
+
+// Gastos
+export const getCategoriasGasto = () => api.get<CategoriaGasto[]>('/gastos/categorias')
+
+export const createCategoriaGasto = (data: { nombre: string; ivaRecuperable: boolean }) =>
+  api.post<CategoriaGasto>('/gastos/categorias', data)
+
+export const updateCategoriaGasto = (id: string, data: Partial<Pick<CategoriaGasto, 'nombre' | 'ivaRecuperable' | 'activa'>>) =>
+  api.patch<CategoriaGasto>(`/gastos/categorias/${id}`, data)
+
+export const getGastos = (params: { desde?: string; hasta?: string; categoriaId?: string; estadoPago?: string; sucursalId?: string }) =>
+  api.get<ListadoGastos>('/gastos', { params })
+
+export const createGasto = (data: {
+  categoriaId: string
+  sucursalId?: string
+  proveedorId?: string
+  descripcion: string
+  tipoDocumento: string
+  numeroDocumento?: string
+  monto: number
+  fecha: string
+  fechaVencimiento?: string
+  medioPago?: string
+}) => api.post<Gasto>('/gastos', data)
+
+export const pagarGasto = (id: string, data: { medioPago: string; fechaPago?: string }) =>
+  api.patch<Gasto>(`/gastos/${id}/pagar`, data)
+
+export const anularGasto = (id: string) => api.patch<Gasto>(`/gastos/${id}/anular`, {})

@@ -55,13 +55,19 @@ export interface DteResult {
 export class SiiIntegrationService {
   private readonly logger = new Logger(SiiIntegrationService.name);
   private readonly certsDir = path.join(process.cwd(), 'sii-certs');
+  private caf?: { cafPrivKeyPem: string; daXml: string };
+  private p12?: { privateKeyPem: string; certPem: string };
 
   emitirDTE(datos: DteData): DteResult {
     try {
-      const { cafPrivKeyPem, daXml } = this.parseCaf();
+      // El CAF y el .p12 se descifran una vez: hacerlo en cada venta bloqueaba el event loop
+      // y alargaba las transacciones de las ventas concurrentes hasta su vencimiento.
+      this.caf ??= this.parseCaf();
+      this.p12 ??= this.loadP12();
+      const { cafPrivKeyPem, daXml } = this.caf;
       const ted = this.generarTED(datos, cafPrivKeyPem, daXml);
       const dteXml = this.generarXMLDTE(datos, ted);
-      const { privateKeyPem, certPem } = this.loadP12();
+      const { privateKeyPem, certPem } = this.p12;
       const xmlFirmado = this.firmarDTE(dteXml, privateKeyPem, certPem, datos.folio, datos.tipoDoc);
 
       this.logger.log(`DTE folio ${datos.folio} tipo ${datos.tipoDoc} emitido correctamente`);

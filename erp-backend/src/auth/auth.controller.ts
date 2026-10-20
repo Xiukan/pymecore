@@ -12,8 +12,8 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Public()
-  // Freno a la prueba de contraseñas: 5 intentos por minuto por IP.
-  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  // Freno a la prueba de contraseñas: intentos por minuto por IP y usuario (LOGIN_MAX_INTENTOS, 5 por defecto).
+  @Throttle({ default: { limit: () => Number(process.env.LOGIN_MAX_INTENTOS ?? 5), ttl: 60_000 } })
   @Post('login')
   @ApiOperation({ summary: 'Iniciar sesión y obtener JWT' })
   login(@Body() dto: LoginDto) {
