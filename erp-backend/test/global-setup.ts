@@ -1,4 +1,5 @@
 import { execSync } from 'child_process'
+import { readFileSync } from 'fs'
 import { Client } from 'pg'
 
 /**
@@ -23,9 +24,6 @@ export default async function globalSetup() {
 
   const datos = new Client({ connectionString: url })
   await datos.connect()
-  await datos.query(`
-    INSERT INTO sucursales (id, nombre) VALUES ('6f1c2a3e-2222-4a1a-8a1a-000000000002', 'Sucursal Norte');
-    INSERT INTO folios_disponibles (id, tipo_doc, numero) SELECT gen_random_uuid(), 39, g FROM generate_series(1, 500) g;
-  `)
+  await datos.query(readFileSync(`${__dirname}/../scripts/datos-e2e.sql`, 'utf8'))
   await datos.end()
 }

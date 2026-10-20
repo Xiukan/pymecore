@@ -1,0 +1,145 @@
+# Verificación de cada cambio hacia Pruebas o main: nada se integra con pruebas en rojo.
+name: CI
+
+on:
+  pull_request:
+    branches: [Pruebas, main]
+  push:
+    branches: [Pruebas, main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '22'
+  PNPM_VERSION: '10'
+
+jobs:
+  backend:
+    name: Backend (tipos, unitarias, integración, build)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: pyme_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U ci" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/pyme_test
+    defaults:
+      run:
+        working-directory: erp-backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: erp-backend/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec prisma generate
+      - name: Tipos
+        run: pnpm exec tsc --noEmit -p tsconfig.json
+      - name: Pruebas unitarias
+        run: pnpm test
+      - name: Pruebas de integración (PostgreSQL real, incluye concurrencia)
+        run: pnpm test:e2e
+      - name: Migraciones sin diferencias con el schema
+        run: |
+          pnpm exec prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --exit-code
+      - run: pnpm build
+
+  frontend:
+    name: Frontend (tipos, unitarias, build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: erp-frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: erp-frontend/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - name: Tipos
+        run: pnpm exec tsc -b
+      - name: Pruebas unitarias
+        run: pnpm test
+      - run: pnpm build
+
+  e2e:
+    name: Navegador (Playwright contra la app completa)
+    needs: [backend, frontend]
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: pyme_e2e
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U ci" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/pyme_e2e
+      JWT_SECRET: ci-secreto-solo-para-pruebas-0123456789abcdef
+      APP_PORT: '3000'
+      LOGIN_MAX_INTENTOS: '100'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Backend con datos de prueba
+        working-directory: erp-backend
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm exec prisma generate
+          pnpm exec prisma migrate deploy
+          pnpm seed
+          psql "$DATABASE_URL" -f scripts/datos-e2e.sql
+          pnpm build
+          nohup node dist/src/main.js > ../backend.log 2>&1 &
+          for i in $(seq 1 60); do curl -sf http://localhost:3000/health && break; sleep 1; done
+      - name: Frontend servido
+        working-directory: erp-frontend
+        env:
+          VITE_API_URL: http://localhost:3000
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+          nohup pnpm exec vite preview --port 4173 --strictPort > ../frontend.log 2>&1 &
+          for i in $(seq 1 60); do curl -sf http://localhost:4173 >/dev/null && break; sleep 1; done
+      - name: Playwright
+        working-directory: erp-frontend
+        env:
+          E2E_BASE_URL: http://localhost:4173
+        run: |
+          pnpm exec playwright install --with-deps chromium
+          pnpm test:e2e
+      - name: Evidencia ante fallas
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-evidencia
+          path: |
+            backend.log
+            frontend.log
+            erp-frontend/test-results/
