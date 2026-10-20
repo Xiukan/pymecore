@@ -1,5 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEmail, IsEnum, IsInt, IsNumber, IsOptional, IsString, Matches, Max, Min } from 'class-validator';
+import { IsEmail, IsEnum, IsInt, IsNumber, IsOptional, IsString, Max, Min } from 'class-validator';
+import { EsRut } from '../../utils/es-rut.decorator';
 import { EstadoGeneral, TipoEntidad } from '@prisma/client';
 
 export class UpdateEntidadDto {
@@ -8,7 +9,7 @@ export class UpdateEntidadDto {
   tipoEntidad?: TipoEntidad;
 
   @IsString()
-  @Matches(/^\d{7,8}-[\dkK]$/, { message: 'RUT inválido. Formato esperado: 12345678-9' })
+  @EsRut()
   @IsOptional()
   rut?: string;
 
