@@ -23,7 +23,7 @@ export default function CajaPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-xl font-semibold text-gray-900">Cajas</h1>
+      <h1 className="text-xl font-semibold text-gray-900">Caja</h1>
       {error && <p className="text-sm text-red-600">{error}</p>}
       {descuadres.length > 0 && (
         <p className="text-sm bg-amber-50 text-amber-800 rounded-lg px-3 py-2">

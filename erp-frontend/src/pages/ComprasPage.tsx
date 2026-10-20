@@ -252,7 +252,7 @@ export default function ComprasPage() {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold text-gray-900">Compras a proveedores</h1>
+        <h1 className="text-xl font-semibold text-gray-900">Compras</h1>
         <button onClick={abrirNueva} className={`${btn} bg-blue-600 hover:bg-blue-700 text-white`}>
           Nueva orden de compra
         </button>

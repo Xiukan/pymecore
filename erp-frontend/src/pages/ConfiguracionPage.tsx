@@ -77,7 +77,7 @@ export default function ConfiguracionPage() {
 
   return (
     <div className="space-y-6 max-w-4xl">
-      <h1 className="text-xl font-semibold text-gray-900">Configuración</h1>
+      <h1 className="text-xl font-semibold text-gray-900">Datos de la empresa</h1>
 
       {aviso && (
         <p className={`text-sm rounded-lg px-3 py-2 ${aviso.ok ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>

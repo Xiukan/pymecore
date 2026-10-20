@@ -117,7 +117,7 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-xl font-semibold text-gray-900">Dashboard comercial</h1>
+        <h1 className="text-xl font-semibold text-gray-900">Cómo va el negocio</h1>
         <p className="text-xs text-gray-500 mt-1 flex flex-wrap gap-x-2">
           <span>Sucursal: <b>{nombreSucursal}</b></span>
           <span className="opacity-40">•</span>

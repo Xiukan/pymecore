@@ -6,7 +6,7 @@ test('apertura, ventas y cierre de caja con informe Z', async ({ page }) => {
   await page.getByLabel('Usuario').fill('vendedor1')
   await page.getByLabel('Contraseña').fill('vend1234')
   await page.getByRole('button', { name: 'Ingresar' }).click()
-  await expect(page.getByText('Dashboard comercial')).toBeVisible()
+  await expect(page.getByText('¿Qué quieres hacer?')).toBeVisible()
   await page.goto('/ventas')
   await page.evaluate(() => { window.confirm = () => true })
 

@@ -305,7 +305,7 @@ export default function VentasPage() {
       {/* PANEL IZQUIERDO */}
       <div style={{ background: 'white', borderRadius: 16, padding: 18, boxShadow: '0 4px 12px rgba(0,0,0,0.06)', display: 'flex', flexDirection: 'column', gap: 12 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <h1 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: '#1a202c' }}>Punto de Venta</h1>
+          <h1 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: '#1a202c' }}>Vender</h1>
           {user?.rol === 'Administrador' && sucursales.length > 0 && (
             <select value={sucursalId} onChange={(e) => setSucursalId(e.target.value)}
               style={{ marginLeft: 'auto', border: '1px solid #e2e8f0', borderRadius: 8, padding: '6px 10px', fontSize: 13 }}>

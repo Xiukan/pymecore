@@ -6,7 +6,7 @@ test('el administrador revisa el resumen de IVA y descarga el libro de ventas', 
   await page.getByLabel('Usuario').fill('admin')
   await page.getByLabel('Contraseña').fill('admin1234')
   await page.getByRole('button', { name: 'Ingresar' }).click()
-  await expect(page.getByText('Dashboard comercial')).toBeVisible()
+  await expect(page.getByText('¿Qué quieres hacer?')).toBeVisible()
   await page.getByRole('link', { name: 'Libros e IVA' }).click()
 
   await expect(page.getByText('Débito fiscal (ventas − NC)')).toBeVisible()
@@ -24,6 +24,6 @@ test('un vendedor no ve el menú de libros', async ({ page }) => {
   await page.getByLabel('Usuario').fill('vendedor1')
   await page.getByLabel('Contraseña').fill('vend1234')
   await page.getByRole('button', { name: 'Ingresar' }).click()
-  await expect(page.getByText('Dashboard comercial')).toBeVisible()
+  await expect(page.getByText('¿Qué quieres hacer?')).toBeVisible()
   await expect(page.getByRole('link', { name: 'Libros e IVA' })).toHaveCount(0)
 })

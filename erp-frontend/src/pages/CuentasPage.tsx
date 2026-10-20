@@ -56,7 +56,7 @@ export default function CuentasPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-xl font-semibold text-gray-900">Cuentas por cobrar y por pagar</h1>
+      <h1 className="text-xl font-semibold text-gray-900">Me deben y debo</h1>
       <div className="flex gap-1 border-b border-gray-200">
         <button onClick={() => setPestana('cobrar')} className={`px-4 py-2 text-sm font-medium -mb-px border-b-2 ${pestana === 'cobrar' ? 'border-blue-600 text-blue-700' : 'border-transparent text-gray-500'}`}>Por cobrar</button>
         {gestiona && <button onClick={() => setPestana('pagar')} className={`px-4 py-2 text-sm font-medium -mb-px border-b-2 ${pestana === 'pagar' ? 'border-blue-600 text-blue-700' : 'border-transparent text-gray-500'}`}>Por pagar</button>}

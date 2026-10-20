@@ -152,7 +152,7 @@ export default function DocumentosPage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-xl font-semibold text-gray-900">Consulta de documentos</h1>
+      <h1 className="text-xl font-semibold text-gray-900">Boletas y facturas</h1>
 
       <div className="flex flex-wrap gap-3">
         {user?.rol === 'Administrador' && sucursales.length > 0 && (

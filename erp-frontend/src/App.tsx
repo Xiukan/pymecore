@@ -3,6 +3,7 @@ import { AuthProvider, useAuth } from '@/context/AuthContext'
 import Layout from '@/components/Layout'
 import LoginPage from '@/pages/LoginPage'
 import DashboardPage from '@/pages/DashboardPage'
+import InicioPage from '@/pages/InicioPage'
 import VentasPage from '@/pages/VentasPage'
 import InventarioPage from '@/pages/InventarioPage'
 import HistorialPage from '@/pages/HistorialPage'
@@ -51,7 +52,8 @@ export default function App() {
               </RequireAuth>
             }
           >
-            <Route index element={<DashboardPage />} />
+            <Route index element={<InicioPage />} />
+            <Route path="reportes" element={<DashboardPage />} />
             <Route path="ventas" element={<VentasPage />} />
             <Route path="inventario" element={<InventarioPage />} />
             <Route path="historial" element={<HistorialPage />} />

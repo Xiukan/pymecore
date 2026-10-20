@@ -7,9 +7,9 @@ test.describe('POS — flujo de cobro', () => {
     await page.getByLabel('Usuario').fill('vendedor1')
     await page.getByLabel('Contraseña').fill('vend1234')
     await page.getByRole('button', { name: 'Ingresar' }).click()
-    await expect(page.getByText('Dashboard comercial')).toBeVisible()
+    await expect(page.getByText('¿Qué quieres hacer?')).toBeVisible()
     await page.goto('/ventas')
-    await page.waitForSelector('text=Punto de Venta')
+    await page.getByRole('heading', { name: 'Vender' }).waitFor()
     // Para cobrar se necesita caja abierta.
     await expect(page.getByText(/● Caja (abierta|cerrada)/)).toBeVisible()
     const abrir = page.getByRole('button', { name: 'Abrir caja' })

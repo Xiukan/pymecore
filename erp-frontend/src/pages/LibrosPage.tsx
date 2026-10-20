@@ -36,7 +36,7 @@ export default function LibrosPage() {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold text-gray-900">Libros e IVA</h1>
+        <h1 className="text-xl font-semibold text-gray-900">Impuestos (IVA)</h1>
         <input type="month" value={mes} onChange={(e) => setMes(e.target.value)} className="border border-gray-300 rounded-lg px-3 py-2 text-sm" />
       </div>
       <div className="flex gap-1 border-b border-gray-200">

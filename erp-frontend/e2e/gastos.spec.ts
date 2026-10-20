@@ -7,7 +7,7 @@ test.describe('Gastos de la empresa', () => {
     await page.getByLabel('Usuario').fill('admin')
     await page.getByLabel('Contraseña').fill('admin1234')
     await page.getByRole('button', { name: 'Ingresar' }).click()
-    await expect(page.getByText('Dashboard comercial')).toBeVisible()
+    await expect(page.getByText('¿Qué quieres hacer?')).toBeVisible()
     await page.goto('/gastos')
     await expect(page.getByText('Gastos de la empresa')).toBeVisible()
   })

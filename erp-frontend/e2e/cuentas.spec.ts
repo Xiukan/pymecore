@@ -7,7 +7,7 @@ test('venta a crédito y abono desde cuentas por cobrar', async ({ page }) => {
   await page.getByLabel('Usuario').fill('admin')
   await page.getByLabel('Contraseña').fill('admin1234')
   await page.getByRole('button', { name: 'Ingresar' }).click()
-  await expect(page.getByText('Dashboard comercial')).toBeVisible()
+  await expect(page.getByText('¿Qué quieres hacer?')).toBeVisible()
 
   // 0. Cliente nuevo con RUT válido, registrado desde el POS.
   const cuerpo = String(10_000_000 + (Date.now() % 9_000_000))

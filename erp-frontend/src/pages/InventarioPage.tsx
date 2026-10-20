@@ -150,7 +150,7 @@ export default function InventarioPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4 flex-wrap">
-        <h1 className="text-xl font-semibold text-gray-900">Inventario</h1>
+        <h1 className="text-xl font-semibold text-gray-900">Productos y stock</h1>
 
         <div className="flex items-center gap-3">
           {user?.rol === 'Administrador' && sucursales.length > 0 && (
