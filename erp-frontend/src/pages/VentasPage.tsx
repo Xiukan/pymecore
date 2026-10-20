@@ -4,7 +4,7 @@ import { rutSinPuntos, useEmpresa } from '@/hooks/useEmpresa'
 import { nuevoUuid } from '@/utils/uuid'
 import { getItems, getStock, getSucursales, createTransaccion, getEntidadByRut, createEntidad, getOfertas, ejecutarSync } from '@/api'
 import { useOnlineStatus } from '@/hooks/useOnlineStatus'
-import { validarRut, calcularDv, rutConDv, formatRut } from '@/utils/rut'
+import { validarRut, calcularDv, rutConDv } from '@/utils/rut'
 import { generarPdfBoleta } from '@/utils/pdfBoleta'
 import type { Entidad, Item, Oferta, StockLocal, Sucursal } from '@/types'
 
@@ -58,7 +58,7 @@ export default function VentasPage() {
   const [pasoCliente, setPasoCliente] = useState<PasoCliente>('inicio')
   const [rutInput, setRutInput] = useState('')
   const [rutError, setRutError] = useState('')
-  const [clienteBuscado, setClienteBuscado] = useState<Entidad | null>(null)
+  const [, setClienteBuscado] = useState<Entidad | null>(null)
   const [buscandoRut, setBuscandoRut] = useState(false)
   const [regNombre, setRegNombre] = useState('')
   const [regApellido, setRegApellido] = useState('')

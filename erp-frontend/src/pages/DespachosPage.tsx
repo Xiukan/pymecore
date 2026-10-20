@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useAuth } from '@/context/AuthContext'
 import { useEmpresa } from '@/hooks/useEmpresa'
-import { getGuias, getGuia, createGuia, recibirGuia, anularGuia, getSucursales, getItems, getStock } from '@/api'
-import { generarPdfBoleta } from '@/utils/pdfBoleta'
+import { getGuias, createGuia, recibirGuia, anularGuia, getSucursales, getItems, getStock } from '@/api'
 import jsPDF from 'jspdf'
 import type { Empresa, GuiaDespacho, Item, Sucursal } from '@/types'
 

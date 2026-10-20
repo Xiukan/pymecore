@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -65,15 +66,15 @@ export class TransactionsService {
    * Con `clave` (cabecera Idempotency-Key) un reintento devuelve el documento ya creado
    * en vez de cobrar y descontar stock otra vez.
    */
-  async create(dto: CreateTransactionDto, usuarioId: string, clave?: string) {
-    if (clave === undefined) return this.registrar(dto, usuarioId);
+  async create(dto: CreateTransactionDto, usuarioId: string, clave?: string, rol = 'Administrador') {
+    if (clave === undefined) return this.registrar(dto, usuarioId, undefined, rol);
     if (!isUUID(clave)) throw new BadRequestException('Idempotency-Key debe ser un UUID.');
     const huella = createHash('sha256').update(canonico({ ...dto, usuarioId: undefined })).digest('hex');
 
     const previa = await this.repetida(usuarioId, clave, huella);
     if (previa) return previa;
     try {
-      return await this.registrar(dto, usuarioId, { clave, huella });
+      return await this.registrar(dto, usuarioId, { clave, huella }, rol);
     } catch (err) {
       // Otra petición con la misma clave ganó la reserva: se devuelve su resultado.
       if (esConflictoIdempotencia(err)) {
@@ -105,6 +106,7 @@ export class TransactionsService {
     dto: CreateTransactionDto,
     usuarioId: string,
     idem?: { clave: string; huella: string },
+    rol = 'Administrador',
   ) {
     const itemIds = dto.detalles.map((d) => d.itemId);
     if (new Set(itemIds).size !== itemIds.length) {
@@ -138,7 +140,7 @@ export class TransactionsService {
         });
       }
       const lineas = esRetorno
-        ? await this.prepararRetorno(tx, dto)
+        ? await this.prepararRetorno(tx, dto, usuarioId, rol)
         : await this.prepararDocumento(tx, dto, itemMap, empresa.tasaIva);
 
       if (dto.tipoTransaccion === TipoTransaccion.VENTA || dto.tipoTransaccion === TipoTransaccion.MERMA) {
@@ -295,7 +297,7 @@ export class TransactionsService {
   }
 
   /** Devolución / NC: contra líneas reales de la venta, sin superar lo vendido ni su monto. */
-  private async prepararRetorno(tx: Tx, dto: CreateTransactionDto) {
+  private async prepararRetorno(tx: Tx, dto: CreateTransactionDto, usuarioId: string, rol: string) {
     // Serializa los retornos concurrentes de una misma venta.
     await tx.$queryRaw`SELECT id FROM transacciones WHERE id = ${dto.transaccionOrigenId}::uuid FOR UPDATE`;
     const origen = await tx.transaccion.findUnique({
@@ -307,6 +309,10 @@ export class TransactionsService {
     }
     if (origen.sucursalId !== dto.sucursalId) {
       throw new BadRequestException('La devolución debe registrarse en la sucursal de la venta.');
+    }
+    // Separación de funciones: quien cobró no se autoriza a sí mismo el reembolso.
+    if (rol === 'Vendedor' && origen.usuarioId === usuarioId) {
+      throw new ForbiddenException('La devolución de tu propia venta debe registrarla otro usuario o un Encargado.');
     }
 
     const previos = await tx.transaccionDetalle.groupBy({

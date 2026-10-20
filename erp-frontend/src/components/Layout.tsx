@@ -34,7 +34,7 @@ export default function Layout() {
   const { user, signOut } = useAuth()
   const navigate = useNavigate()
   const online = useOnlineStatus()
-  const { pendientes, sincronizando, sincronizar } = useSyncPendientes(user?.sucursalId)
+  const { pendientes, sincronizando, sincronizar } = useSyncPendientes(user?.sucursalId ?? undefined)
 
   const handleSignOut = () => {
     signOut()

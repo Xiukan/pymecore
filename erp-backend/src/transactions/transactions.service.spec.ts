@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common'
+import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common'
 import { Test, TestingModule } from '@nestjs/testing'
 import { Prisma, TipoTransaccion } from '@prisma/client'
 import { TransactionsService } from './transactions.service'
@@ -211,6 +211,14 @@ describe('TransactionsService', () => {
 
       expect(nc.detalles[0].subtotal).toEqual(D(3490))
       expect(nc.detalles[0].montoIva).toEqual(D(558))
+    })
+
+    it('un vendedor no registra la devolución de su propia venta', async () => {
+      tx.transaccion.findUnique.mockResolvedValue({ ...origen, usuarioId: 'vend-1' })
+
+      await expect(service.create(devolucion(1) as any, 'vend-1', undefined, 'Vendedor')).rejects.toThrow(ForbiddenException)
+      await expect(service.create(devolucion(1) as any, 'vend-2', undefined, 'Vendedor')).resolves.toBeDefined()
+      await expect(service.create(devolucion(1) as any, 'vend-1', undefined, 'Encargado')).resolves.toBeDefined()
     })
 
     it('rechaza ítems que no estaban en la venta', async () => {
