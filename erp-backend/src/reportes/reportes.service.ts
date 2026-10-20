@@ -40,6 +40,18 @@ export class ReportesService {
 
     const filtroSucursal = sucursalId ? { sucursalId } : {};
 
+    // Gastos del período (días calendario en UTC). Con filtro de sucursal solo cuentan los de
+    // esa sucursal; sin filtro, todos, incluidos los de la empresa en general.
+    const gastos = await this.prisma.gastoOperacional.aggregate({
+      where: {
+        estado: 'VIGENTE',
+        ...(sucursalId && { sucursalId }),
+        fechaRegistro: { gte: new Date(`${desde}T00:00:00Z`), lte: new Date(`${hasta}T23:59:59.999Z`) },
+      },
+      _sum: { monto: true },
+    });
+    const totalGastos = Number(gastos._sum.monto ?? 0);
+
     const [transacciones, stock] = await Promise.all([
       this.prisma.transaccion.findMany({
         where: {
@@ -160,6 +172,9 @@ export class ReportesService {
         devoluciones: redondear(devoluciones),
         numDevoluciones,
         costoMermas: redondear(costoMermas),
+        gastos: redondear(totalGastos),
+        // Resultado operacional simple: margen bruto de ventas − mermas − gastos del período.
+        resultado: redondear(total.margen - costoMermas - totalGastos),
       },
       serie: [...serie.entries()]
         .map(([p, a]) => ({ periodo: p, monto: redondear(a.monto), ventas: a.ventas, margen: redondear(a.margen) }))

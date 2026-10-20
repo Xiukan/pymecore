@@ -18,6 +18,7 @@ import { useAuth } from '@/context/AuthContext'
 import { getAlertas, getDashboard, getSucursales } from '@/api'
 import type { DashboardReporte, StockLocal, Sucursal } from '@/types'
 import { descargarCsv } from '@/utils/csv'
+import { clp } from '@/utils/formato'
 
 // Paleta tomada del tema corporativo del portal BI (frontend/charts/theme.py)
 const COLORES = ['#2563EB', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#06B6D4', '#6366F1', '#14B8A6', '#F97316', '#64748B']
@@ -28,7 +29,6 @@ type Metrica = 'monto' | 'unidades' | 'margen'
 const METRICAS: Record<Metrica, string> = { monto: 'Monto vendido', unidades: 'Unidades', margen: 'Margen bruto' }
 const GRANULARIDADES: Record<Granularidad, string> = { dia: 'Día', semana: 'Semana', mes: 'Mes' }
 
-const clp = (n: number) => `$${Math.round(n).toLocaleString('es-CL')}`
 const num = (n: number) => n.toLocaleString('es-CL', { maximumFractionDigits: 1 })
 const fmt = (m: Metrica, n: number) => (m === 'unidades' ? num(n) : clp(n))
 
@@ -187,10 +187,12 @@ export default function DashboardPage() {
             <StatCard label="Margen bruto" value={clp(k.margenBruto)} hint={`${k.margenPct}% sobre venta neta`} />
             <StatCard label="Clientes identificados" value={num(k.clientesUnicos)} />
           </div>
-          <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 xl:grid-cols-6 gap-4">
             <StatCard label="Devoluciones / NC" value={clp(k.devoluciones)} hint={`${k.numDevoluciones} documentos`} tone={k.numDevoluciones ? 'warn' : undefined} />
             <StatCard label="Costo en mermas" value={clp(k.costoMermas)} tone={k.costoMermas ? 'warn' : undefined} />
             <StatCard label="Inventario valorizado" value={clp(valorInventario)} hint="a costo promedio, stock actual" />
+            <StatCard label="Gastos del período" value={clp(k.gastos)} hint="neto si el IVA es recuperable" />
+            <StatCard label="Resultado" value={clp(k.resultado)} hint="margen − mermas − gastos" tone={k.resultado < 0 ? 'danger' : undefined} />
             <StatCard label="Alertas de stock" value={num(alertas.length)} tone={alertas.length ? 'danger' : undefined} />
           </div>
 

@@ -47,15 +47,26 @@ describe('caja', () => {
   })
 
   it('cerrar mientras entran ventas: el arqueo cuadra con las ventas ligadas a la sesión', async () => {
-    const { id } = await abrirCaja(ctx, ctx.vendedor, CASA_MATRIZ, 0)
+    const paso = (nombre: string) => (err: unknown) => {
+      throw new Error(`Falló "${nombre}": ${err instanceof Error ? err.message : String(err)}`)
+    }
+    const { id } = await abrirCaja(ctx, ctx.vendedor, CASA_MATRIZ, 0).catch(paso('abrir caja'))
     const [cierre, ...ventas] = await Promise.all([
       new Promise<any>((r) => setTimeout(() => r(cerrarCaja(id, 0)), 30)),
       ...Array.from({ length: 6 }, () => venta()),
-    ])
-    expect(cierre.status).toBe(201)
+    ]).catch(paso('cierre y ventas en paralelo'))
     const ligadas = await ctx.db.transaccion.aggregate({ where: { sesionCajaId: id }, _sum: { montoTotal: true }, _count: true })
-    expect(Number(cierre.body.efectivoEsperado)).toBe(Number(ligadas._sum.montoTotal ?? 0))
-    expect(ligadas._count).toBe(ventas.filter((v) => v.status === 201).length)
+    // Si falla (se vio una vez, sin reproducirse en decenas de corridas), deja todo el contexto.
+    const detalle = JSON.stringify({
+      cierre: { status: cierre.status, body: cierre.body },
+      ventas: ventas.map((v) => ({ status: v.status, mensaje: v.body?.message, sesion: v.body?.sesionCajaId })),
+      ligadas: { cantidad: ligadas._count, suma: ligadas._sum.montoTotal },
+    })
+    const ok =
+      cierre.status === 201 &&
+      Number(cierre.body.efectivoEsperado) === Number(ligadas._sum.montoTotal ?? 0) &&
+      ligadas._count === ventas.filter((v) => v.status === 201).length
+    if (!ok) throw new Error(`Arqueo inconsistente con ventas concurrentes: ${detalle}`)
   })
 
   it('un vendedor no cierra la caja de otro; el administrador sí', async () => {

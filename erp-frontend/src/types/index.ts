@@ -146,6 +146,8 @@ export interface DashboardReporte {
     devoluciones: number
     numDevoluciones: number
     costoMermas: number
+    gastos: number
+    resultado: number
   }
   serie: { periodo: string; monto: number; ventas: number; margen: number }[]
   mediosPago: { medio: string; monto: number }[]
