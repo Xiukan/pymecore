@@ -18,6 +18,7 @@ const navItems = [
   { to: '/despachos', label: 'Despacho sucursales', end: false, roles: ['Administrador', 'Encargado'] },
   { to: '/documentos', label: 'Documentos', end: false, roles: null },
   { to: '/clientes', label: 'Clientes', end: false, roles: null },
+  { to: '/libros', label: 'Libros e IVA', end: false, roles: ['Administrador'] },
   { to: '/usuarios', label: 'Usuarios', end: false, roles: ['Administrador'] },
   { to: '/configuracion', label: 'Configuración', end: false, roles: ['Administrador'] },
 ]

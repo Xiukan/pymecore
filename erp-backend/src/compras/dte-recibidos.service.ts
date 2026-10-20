@@ -4,6 +4,7 @@ import { createHash } from 'crypto';
 import { UsuarioSesion } from '../auth/sucursal-scope';
 import { EmpresaService } from '../empresa/empresa.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { TX_OPCIONES } from '../utils/transacciones';
 import { leerDteRecibido, normalizarRut, TIPOS_SOPORTADOS } from './dte-recibido';
 
 const SIN_XML = {
@@ -82,7 +83,7 @@ export class DteRecibidosService {
         },
         select: SIN_XML,
       });
-    });
+    }, TX_OPCIONES);
   }
 
   listar(estado?: EstadoDteRecibido) {
@@ -130,7 +131,7 @@ export class DteRecibidosService {
         data: { estado: 'GASTO', gastoId: gasto.id },
         select: SIN_XML,
       });
-    });
+    }, TX_OPCIONES);
   }
 
   async descartar(id: string, motivo: string) {
@@ -141,7 +142,7 @@ export class DteRecibidosService {
         data: { estado: 'DESCARTADO', motivoDescarte: motivo.trim() },
         select: SIN_XML,
       });
-    });
+    }, TX_OPCIONES);
   }
 
   /** Bloquea el DTE y exige que siga pendiente: dos destinos simultáneos no pueden ganar ambos. */

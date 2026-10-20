@@ -13,6 +13,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { EmpresaService } from '../empresa/empresa.service';
 import { SiiIntegrationService } from '../sii/sii-integration.service';
 import { reclamarFolio } from '../utils/folios.util';
+import { TX_OPCIONES } from '../utils/transacciones';
 import { calcularDocumento, dec, peso, share, ZERO } from '../utils/money.util';
 import { CreateTransactionDto } from './dto/create-transaction.dto';
 
@@ -21,8 +22,6 @@ type Tx = Prisma.TransactionClient;
 const RETORNOS: TipoTransaccion[] = [TipoTransaccion.DEVOLUCION, TipoTransaccion.NOTA_CREDITO];
 const OPERACION = 'transactions.create:v1';
 const MEDIOS_VENTA: MedioPago[] = [MedioPago.Efectivo, MedioPago.Tarjeta, MedioPago.Transferencia];
-/** Ventas del mismo producto esperan el bloqueo de su fila de stock: se da margen sobre el límite por defecto (5 s). */
-const TX_OPCIONES = { maxWait: 10_000, timeout: 15_000 };
 
 /** JSON con claves ordenadas: el mismo contenido produce siempre la misma huella. */
 function canonico(valor: unknown): string {

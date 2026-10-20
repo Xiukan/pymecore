@@ -1,6 +1,7 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { exigirSucursal, UsuarioSesion } from '../auth/sucursal-scope';
 import { PrismaService } from '../prisma/prisma.service';
+import { TX_OPCIONES } from '../utils/transacciones';
 import { AdjustStockDto, CreateStockDto } from './dto/adjust-stock.dto';
 
 @Injectable()
@@ -63,6 +64,6 @@ export class StockService {
         });
       }
       return tx.stockLocal.update({ where: { id }, data });
-    });
+    }, TX_OPCIONES);
   }
 }

@@ -3,6 +3,7 @@ import { EstadoOrdenCompra, Prisma } from '@prisma/client';
 import { esAdmin, exigirSucursal, sucursalDe, UsuarioSesion } from '../auth/sucursal-scope';
 import { EmpresaService } from '../empresa/empresa.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { TX_OPCIONES } from '../utils/transacciones';
 import { calcularDocumentoNeto, dec, ZERO } from '../utils/money.util';
 import { DteRecibidosService } from './dte-recibidos.service';
 import { CreateFacturaCompraDto, CreateOrdenCompraDto, CreateRecepcionDto } from './dto/compras.dto';
@@ -114,7 +115,7 @@ export class ComprasService {
         },
         include: INCLUDE_LISTA,
       });
-    });
+    }, TX_OPCIONES);
   }
 
   async listar(user: UsuarioSesion, filtros: { sucursalId?: string; estado?: EstadoOrdenCompra }) {
@@ -188,7 +189,7 @@ export class ComprasService {
         });
       }
       return recepcion;
-    });
+    }, TX_OPCIONES);
   }
 
   async anularRecepcion(recepcionId: string, user: UsuarioSesion) {
@@ -224,7 +225,7 @@ export class ComprasService {
         await this.recalcularCosto(tx, detalle.itemId, linea.cantidad, detalle.costoUnitario, 'reverso');
       }
       return tx.recepcionCompra.update({ where: { id: recepcionId }, data: { estado: 'ANULADO' } });
-    });
+    }, TX_OPCIONES);
   }
 
   async registrarFactura(ordenId: string, dto: CreateFacturaCompraDto, user: UsuarioSesion) {
@@ -320,7 +321,7 @@ export class ComprasService {
         await tx.dteRecibido.update({ where: { id: dte.id }, data: { estado: 'ASOCIADO_OC', facturaCompraId: factura.id } });
       }
       return factura;
-    });
+    }, TX_OPCIONES);
   }
 
   async anularFactura(facturaId: string, user: UsuarioSesion) {
@@ -339,7 +340,7 @@ export class ComprasService {
         data: { estado: 'PENDIENTE', facturaCompraId: null },
       });
       return tx.facturaCompra.findUniqueOrThrow({ where: { id: facturaId } });
-    });
+    }, TX_OPCIONES);
   }
 
   async cerrar(ordenId: string, user: UsuarioSesion) {
@@ -347,7 +348,7 @@ export class ComprasService {
       const orden = await this.bloquearOrden(tx, ordenId, user);
       if (orden.estado !== 'ABIERTA') throw new BadRequestException('Solo se cierra una orden abierta.');
       return tx.ordenCompra.update({ where: { id: ordenId }, data: { estado: 'CERRADA' } });
-    });
+    }, TX_OPCIONES);
   }
 
   async anular(ordenId: string, user: UsuarioSesion) {
@@ -360,7 +361,7 @@ export class ComprasService {
         throw new BadRequestException('La orden tiene recepciones o facturas vigentes. Anúlelas primero.');
       }
       return tx.ordenCompra.update({ where: { id: ordenId }, data: { estado: 'ANULADA' } });
-    });
+    }, TX_OPCIONES);
   }
 
   private async bloquearOrden(tx: Tx, ordenId: string, user: UsuarioSesion) {

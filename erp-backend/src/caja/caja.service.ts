@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import { MedioPago, Prisma, TipoTransaccion } from '@prisma/client';
 import { esAdmin, exigirSucursal, sucursalDe, UsuarioSesion } from '../auth/sucursal-scope';
 import { PrismaService } from '../prisma/prisma.service';
+import { TX_OPCIONES } from '../utils/transacciones';
 import { AbrirCajaDto, CerrarCajaDto } from './dto/caja.dto';
 
 type Db = Prisma.TransactionClient | PrismaService;
@@ -113,7 +114,7 @@ export class CajaService {
         },
         include: { sucursal: { select: { nombre: true } }, usuario: { select: { nombreCompleto: true } } },
       });
-    });
+    }, TX_OPCIONES);
   }
 
   listar(user: UsuarioSesion, filtros: { sucursalId?: string; desde?: string; hasta?: string }) {

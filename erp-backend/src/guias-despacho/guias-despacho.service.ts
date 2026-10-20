@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { TX_OPCIONES } from '../utils/transacciones';
 import { CreateGuiaDto } from './dto/guia.dto';
 
 const INCLUDE_FULL = {
@@ -53,7 +54,7 @@ export class GuiasDespachoService {
         },
         include: INCLUDE_FULL,
       });
-    });
+    }, TX_OPCIONES);
   }
 
   findAll(sucursalId?: string) {
@@ -90,7 +91,7 @@ export class GuiasDespachoService {
         });
       }
       return tx.guiaDespacho.findUniqueOrThrow({ where: { id }, include: INCLUDE_FULL });
-    });
+    }, TX_OPCIONES);
   }
 
   async anular(id: string) {
@@ -112,7 +113,7 @@ export class GuiasDespachoService {
         });
       }
       return tx.guiaDespacho.findUniqueOrThrow({ where: { id }, include: INCLUDE_FULL });
-    });
+    }, TX_OPCIONES);
   }
 
   private async rechazarTransicion(tx: Prisma.TransactionClient, id: string, mensaje: string): Promise<never> {

@@ -4,6 +4,7 @@ import { esAdmin, exigirSucursal, sucursalDe, UsuarioSesion } from '../auth/sucu
 import { normalizarRut } from '../compras/dte-recibido';
 import { EmpresaService } from '../empresa/empresa.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { TX_OPCIONES } from '../utils/transacciones';
 import { peso, ZERO } from '../utils/money.util';
 import { CategoriaGastoDto, CreateGastoDto, PagarGastoDto } from './dto/gastos.dto';
 
@@ -125,7 +126,7 @@ export class GastosService {
         },
         include: INCLUDE,
       });
-    });
+    }, TX_OPCIONES);
   }
 
   async listar(
@@ -196,7 +197,7 @@ export class GastosService {
       // Un gasto nacido de un DTE recibido devuelve el documento a la bandeja.
       await tx.dteRecibido.updateMany({ where: { gastoId: id }, data: { estado: 'PENDIENTE', gastoId: null } });
       return tx.gastoOperacional.findUniqueOrThrow({ where: { id }, include: INCLUDE });
-    });
+    }, TX_OPCIONES);
   }
 
   categorias() {

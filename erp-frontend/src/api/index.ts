@@ -1,5 +1,5 @@
 import { api } from './client'
-import type { CategoriaGasto, SesionCaja, DashboardReporte, DteRecibido, Gasto, ListadoGastos, Empresa, Entidad, OrdenCompra, UnidadMedida, GuiaDespacho, Item, Oferta, StockLocal, Sucursal, Transaccion, Usuario } from '@/types'
+import type { CategoriaGasto, Libro, ResumenIva, SesionCaja, DashboardReporte, DteRecibido, Gasto, ListadoGastos, Empresa, Entidad, OrdenCompra, UnidadMedida, GuiaDespacho, Item, Oferta, StockLocal, Sucursal, Transaccion, Usuario } from '@/types'
 
 // Auth
 export const login = (username: string, password: string) =>
@@ -281,3 +281,8 @@ export const cerrarCaja = (id: string, data: { efectivoContado: number; observac
 
 export const getSesionesCaja = (params: { sucursalId?: string; desde?: string; hasta?: string } = {}) =>
   api.get<SesionCaja[]>('/caja/sesiones', { params })
+
+// Tributario
+export const getLibroVentas = (mes: string) => api.get<Libro>('/tributario/libro-ventas', { params: { mes } })
+export const getLibroCompras = (mes: string) => api.get<Libro>('/tributario/libro-compras', { params: { mes } })
+export const getResumenIva = (mes: string) => api.get<ResumenIva>('/tributario/resumen-iva', { params: { mes } })

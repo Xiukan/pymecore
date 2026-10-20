@@ -321,3 +321,37 @@ export interface SesionCaja {
   sucursal?: { nombre: string }
   usuario?: { nombreCompleto: string }
 }
+
+export interface FilaLibro {
+  fecha: string
+  tipoDte: number
+  folio: string
+  rut: string
+  razonSocial: string
+  neto: string
+  exento: string
+  iva: string
+  otros: string
+  total: string
+  ivaRecuperable?: boolean
+  origen?: string
+}
+
+export interface Libro {
+  mes: string
+  filas: FilaLibro[]
+  totales: { tipoDte: number; documentos: number; neto: string; exento: string; iva: string; otros: string; total: string }[]
+}
+
+export interface ResumenIva {
+  mes: string
+  ventasNetas: string
+  comprasNetas: string
+  debito: string
+  credito: string
+  ivaNoRecuperable: string
+  ivaAPagar: string
+  remanente: string
+  retencionHonorarios: string
+  totalAPagar: string
+}

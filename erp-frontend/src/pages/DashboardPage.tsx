@@ -17,6 +17,7 @@ import {
 import { useAuth } from '@/context/AuthContext'
 import { getAlertas, getDashboard, getSucursales } from '@/api'
 import type { DashboardReporte, StockLocal, Sucursal } from '@/types'
+import { descargarCsv } from '@/utils/csv'
 
 // Paleta tomada del tema corporativo del portal BI (frontend/charts/theme.py)
 const COLORES = ['#2563EB', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#06B6D4', '#6366F1', '#14B8A6', '#F97316', '#64748B']
@@ -50,16 +51,6 @@ const PRESETS = [
   ['mes', 'Este mes'],
   ['anio', 'Este año'],
 ] as const
-
-function descargarCsv(nombre: string, filas: (string | number)[][]) {
-  const csv = filas.map((f) => f.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(';')).join('\n')
-  const url = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' }))
-  const a = document.createElement('a')
-  a.href = url
-  a.download = nombre
-  a.click()
-  URL.revokeObjectURL(url)
-}
 
 export default function DashboardPage() {
   const { user } = useAuth()
