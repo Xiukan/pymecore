@@ -85,6 +85,7 @@ export const createTransaccion = (
     entidadId?: string
     tipoTransaccion: string
     medioPago?: string
+    pagos?: { medioPago: string; monto: number }[]
     descuentoGlobal?: number
     rutReceptor?: string
     razonSocialReceptor?: string

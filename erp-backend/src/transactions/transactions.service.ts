@@ -117,6 +117,14 @@ export class TransactionsService {
     if (new Set(itemIds).size !== itemIds.length) {
       throw new BadRequestException('El documento repite un ítem; agrupe las cantidades en una sola línea.');
     }
+    if (dto.pagos) {
+      if (dto.tipoTransaccion !== TipoTransaccion.VENTA) throw new BadRequestException('Solo una venta se paga con varios medios.');
+      if (new Set(dto.pagos.map((p) => p.medioPago)).size !== dto.pagos.length) {
+        throw new BadRequestException('Cada medio de pago va una sola vez.');
+      }
+      // El medio principal (el de mayor monto) queda en la venta para listados y filtros.
+      dto.medioPago = [...dto.pagos].sort((a, b) => b.monto - a.monto)[0].medioPago;
+    }
     if (dto.tipoTransaccion === TipoTransaccion.VENTA && !MEDIOS_VENTA.includes(dto.medioPago as MedioPago)) {
       throw new BadRequestException('Indique el medio de pago de la venta (efectivo, tarjeta, transferencia o crédito).');
     }
@@ -173,6 +181,9 @@ export class TransactionsService {
       }
 
       const montoTotal = lineas.reduce((s, l) => s.add(l.subtotal), ZERO);
+      if (dto.pagos && !dto.pagos.reduce((s, p) => s.add(p.monto), ZERO).eq(montoTotal)) {
+        throw new BadRequestException(`Los medios de pago deben sumar el total de la venta ($${montoTotal}).`);
+      }
       if (dto.medioPago === MedioPago.Credito) await this.validarCredito(tx, dto, montoTotal);
       const esVenta = dto.tipoTransaccion === TipoTransaccion.VENTA;
       const tipoDoc = dto.tipoDocumento ?? 39;
@@ -193,6 +204,7 @@ export class TransactionsService {
           observaciones: dto.observaciones,
           motivoMerma: dto.motivoMerma,
           detalles: { createMany: { data: lineas } },
+          ...(dto.pagos && { pagos: { createMany: { data: dto.pagos.map((p) => ({ medioPago: p.medioPago, monto: p.monto })) } } }),
         },
         include: { detalles: true },
       });

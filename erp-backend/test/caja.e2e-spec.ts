@@ -19,6 +19,23 @@ describe('caja', () => {
 
   it('sin caja abierta no se vende', () => venta().expect(400))
 
+  it('pago mixto: cada parte entra a su medio y deben sumar el total', async () => {
+    const { id } = await abrirCaja(ctx, ctx.vendedor, CASA_MATRIZ, 0)
+    const mixta = (pagos: object[]) =>
+      ctx.http().post('/transactions').set(auth(ctx.vendedor))
+        .send({ sucursalId: CASA_MATRIZ, tipoTransaccion: 'VENTA', medioPago: 'Efectivo', pagos, detalles: [{ itemId: cafe, cantidad: 1, precioUnitario: 3490 }] })
+    await mixta([{ medioPago: 'Efectivo', monto: 1000 }, { medioPago: 'Tarjeta', monto: 2000 }]).expect(400)
+    await mixta([{ medioPago: 'Efectivo', monto: 1490 }, { medioPago: 'Efectivo', monto: 2000 }]).expect(400)
+    await mixta([{ medioPago: 'Credito', monto: 1490 }, { medioPago: 'Efectivo', monto: 2000 }]).expect(400)
+    const v = (await mixta([{ medioPago: 'Efectivo', monto: 1490 }, { medioPago: 'Tarjeta', monto: 2000 }]).expect(201)).body
+    expect(v.medioPago).toBe('Tarjeta')
+    const { resumen } = (await ctx.http().get('/caja/actual').set(auth(ctx.vendedor)).expect(200)).body
+    expect(resumen.efectivoEsperado).toBe('1490')
+    expect(resumen.totalVentas).toBe('3490')
+    expect(resumen.porMedio.find((m: any) => m.medio === 'Tarjeta').montoVentas).toBe('2000')
+    await cerrarCaja(id, 1490).expect(201)
+  })
+
   it('una sola caja abierta por cajero y solo en su sucursal', async () => {
     await ctx.http().post('/caja/abrir').set(auth(ctx.vendedor)).send({ sucursalId: SUCURSAL_NORTE, montoApertura: 0 }).expect(403)
     await ctx.http().post('/caja/abrir').set(auth(ctx.vendedor)).send({ sucursalId: CASA_MATRIZ, montoApertura: 20000 }).expect(201)

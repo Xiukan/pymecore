@@ -3,6 +3,7 @@ import { useAuth } from '@/context/AuthContext'
 import CajaPos from '@/components/CajaPos'
 import { rutSinPuntos, useEmpresa } from '@/hooks/useEmpresa'
 import { nuevoUuid } from '@/utils/uuid'
+import { repartirPago } from '@/utils/pagos'
 import { getItems, getStock, getSucursales, createTransaccion, getEntidadByRut, createEntidad, getOfertas, ejecutarSync } from '@/api'
 import { useOnlineStatus } from '@/hooks/useOnlineStatus'
 import { calcularDv, interpretarRut, rutConDv } from '@/utils/rut'
@@ -44,7 +45,9 @@ export default function VentasPage() {
   const online = useOnlineStatus()
   const [sucursales, setSucursales] = useState<Sucursal[]>([])
   const [sucursalId, setSucursalId] = useState(user?.sucursalId ?? '')
-  const [medioPago, setMedioPago] = useState<'Efectivo' | 'Tarjeta' | 'Transferencia' | 'Credito'>('Efectivo')
+  const [medioPago, setMedioPago] = useState<'Efectivo' | 'Tarjeta' | 'Transferencia' | 'Credito' | 'Mixto'>('Efectivo')
+  const [efectivoMixto, setEfectivoMixto] = useState('')
+  const [otroMixto, setOtroMixto] = useState<'Tarjeta' | 'Transferencia'>('Tarjeta')
   const [cajaAbierta, setCajaAbierta] = useState(false)
   const [versionCaja, setVersionCaja] = useState(0)
   const [items, setItems] = useState<Item[]>([])
@@ -232,6 +235,11 @@ export default function VentasPage() {
       setPasoCliente('buscar')
       return
     }
+    const pagos = medioPago === 'Mixto' ? repartirPago(total, Number(efectivoMixto), otroMixto) : null
+    if (medioPago === 'Mixto' && !pagos) {
+      setMensaje({ tipo: 'err', texto: 'Indica cuánto paga en efectivo (menos que el total); el resto se cobra con el otro medio.' })
+      return
+    }
     if (!window.confirm(`¿Confirmar cobro de $${Math.round(total).toLocaleString('es-CL')}?`)) return
     setLoading(true)
     setMensaje(null)
@@ -241,7 +249,8 @@ export default function VentasPage() {
         sucursalId,
         entidadId,
         tipoTransaccion: 'VENTA',
-        medioPago,
+        medioPago: pagos ? 'Efectivo' : medioPago,
+        pagos: pagos ?? undefined,
         rutReceptor: rutFinal || undefined,
         razonSocialReceptor: razonSocial || undefined,
         tipoDocumento: tipoDoc,
@@ -418,15 +427,27 @@ export default function VentasPage() {
         <CajaPos sucursalId={sucursalId} version={versionCaja} onCambio={setCajaAbierta} />
 
         {/* Medio de pago */}
-        <div style={{ display: 'grid', gridTemplateColumns: entidadId ? '1fr 1fr 1fr 1fr' : '1fr 1fr 1fr', gap: 8 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: entidadId ? 'repeat(5, 1fr)' : 'repeat(4, 1fr)', gap: 8 }}>
           {/* Crédito solo con cliente identificado; el servidor valida su cupo. */}
-          {(entidadId ? (['Efectivo', 'Tarjeta', 'Transferencia', 'Credito'] as const) : (['Efectivo', 'Tarjeta', 'Transferencia'] as const)).map((m) => (
+          {(entidadId ? (['Efectivo', 'Tarjeta', 'Transferencia', 'Credito', 'Mixto'] as const) : (['Efectivo', 'Tarjeta', 'Transferencia', 'Mixto'] as const)).map((m) => (
             <div key={m} onClick={() => setMedioPago(m)}
               style={{ padding: '8px', border: `2px solid ${medioPago === m ? '#3182ce' : '#e2e8f0'}`, borderRadius: 10, textAlign: 'center', cursor: 'pointer', fontSize: 12, fontWeight: 600, background: medioPago === m ? '#ebf8ff' : 'white', color: medioPago === m ? '#2b6cb0' : '#718096' }}>
-              {m === 'Credito' ? 'Crédito' : m}
+              {m === 'Credito' ? 'Crédito' : m === 'Mixto' ? 'Dos medios' : m}
             </div>
           ))}
         </div>
+        {medioPago === 'Mixto' && (
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 }}>
+            <span>Paga en efectivo $</span>
+            <input aria-label="Monto en efectivo" inputMode="numeric" value={efectivoMixto} onChange={(e) => setEfectivoMixto(e.target.value.replace(/\D/g, ''))}
+              style={{ width: 90, padding: '6px 8px', border: '1px solid #cbd5e0', borderRadius: 8 }} />
+            <span>y el resto (${Math.max(0, Math.round(total) - Number(efectivoMixto || 0)).toLocaleString('es-CL')}) con</span>
+            <select value={otroMixto} onChange={(e) => setOtroMixto(e.target.value as 'Tarjeta' | 'Transferencia')} style={{ padding: '6px', borderRadius: 8 }}>
+              <option>Tarjeta</option>
+              <option>Transferencia</option>
+            </select>
+          </div>
+        )}
 
         {/* Tipo documento */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>

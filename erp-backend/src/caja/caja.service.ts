@@ -157,12 +157,16 @@ export class CajaService {
   private async calcular(db: Db, sesionId: string, montoApertura: Prisma.Decimal) {
     const movimientos = await db.transaccion.findMany({
       where: { sesionCajaId: sesionId, estado: 'Activa' },
-      select: { tipoTransaccion: true, medioPago: true, montoTotal: true },
+      select: { tipoTransaccion: true, medioPago: true, montoTotal: true, pagos: { select: { medioPago: true, monto: true } } },
     });
     const abonos = await db.abonoCliente.aggregate({
       where: { sesionCajaId: sesionId, estado: 'VIGENTE', medioPago: 'Efectivo' },
       _sum: { monto: true },
     });
-    return resumir(montoApertura, movimientos, abonos._sum.monto ?? 0);
+    // Una venta con pago mixto cuenta en cada medio por su parte.
+    const partes = movimientos.flatMap((m) =>
+      m.pagos.length ? m.pagos.map((p) => ({ tipoTransaccion: m.tipoTransaccion, medioPago: p.medioPago, montoTotal: p.monto })) : [m],
+    );
+    return resumir(montoApertura, partes, abonos._sum.monto ?? 0);
   }
 }
