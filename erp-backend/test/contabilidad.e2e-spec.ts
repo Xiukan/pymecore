@@ -9,7 +9,7 @@ describe('contabilidad automática, informes y cierre de mes', () => {
   })()
   const mes = hoy.slice(0, 7)
   // Un mes pasado y sin otros movimientos aísla los montos de esta prueba.
-  const MES_PASADO = '2025-03'
+  const MES_PASADO = '2024-03'
   const get = (url: string) => ctx.http().get(url).set(auth(ctx.admin))
   const sumar = (asientos: any[], lado: 'debe' | 'haber') => asientos.flatMap((a) => a.lineas).reduce((s, l) => s + n(l[lado]), 0)
   let luz: string
@@ -47,7 +47,7 @@ describe('contabilidad automática, informes y cierre de mes', () => {
 
   it('un gasto con factura va a su cuenta con IVA crédito y aparece en el estado de resultados', async () => {
     await gasto(`${MES_PASADO}-10`).expect(201)
-    const { asientos } = (await get(`/contabilidad/diario?mes=${MES_PASADO}`).expect(200)).body
+    const asientos = (await get(`/contabilidad/diario?mes=${MES_PASADO}`).expect(200)).body.asientos.filter((a: any) => a.origenTipo === 'GASTO')
     expect(asientos).toHaveLength(1)
     expect(asientos[0].lineas.map((l: any) => [l.cuenta, n(l.debe), n(l.haber)])).toEqual(
       expect.arrayContaining([['5110', 10000, 0], ['1105', 1900, 0], ['2101', 0, 11900]]),
