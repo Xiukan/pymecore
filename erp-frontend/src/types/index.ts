@@ -688,3 +688,27 @@ export interface ActivoFijo {
   valorLibro: string
   cuotaMensual: string
 }
+
+export interface ListaPrecio {
+  id: string
+  nombre: string
+  activa: boolean
+  precios: { itemId: string; precio: string }[]
+  clientes: { id: string; rut: string; nombreRazonSocial: string }[]
+}
+
+export interface Pedido {
+  id: string
+  folio: number
+  estado: 'COTIZACION' | 'PEDIDO' | 'VENDIDO' | 'ANULADO'
+  fecha: string
+  validoHasta: string | null
+  fechaEntrega: string | null
+  observaciones: string | null
+  total: string
+  entidad: { id: string; rut: string; nombreRazonSocial: string; direccion: string | null; email: string | null; telefono: string | null }
+  sucursal: { nombre: string }
+  usuario: { nombreCompleto: string }
+  detalles: { id: string; itemId: string; cantidad: string; precioUnitario: string; subtotal: string; item: { nombre: string; codigoSku: string; unidadMedida: string } }[]
+  transaccion: { id: string; numeroFactura: string | null } | null
+}

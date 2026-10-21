@@ -8,6 +8,8 @@ import { AuthModule } from './auth/auth.module';
 import { CajaModule } from './caja/caja.module';
 import { CampoModule } from './campo/campo.module';
 import { FinanzasModule } from './finanzas/finanzas.module';
+import { PedidosModule } from './pedidos/pedidos.module';
+import { PreciosModule } from './precios/precios.module';
 import { ContabilidadModule } from './contabilidad/contabilidad.module';
 import { LotesModule } from './lotes/lotes.module';
 import { ProductoresModule } from './productores/productores.module';
@@ -58,6 +60,8 @@ import { UsuariosModule } from './usuarios/usuarios.module';
     ProductoresModule,
     CampoModule,
     FinanzasModule,
+    PreciosModule,
+    PedidosModule,
   ],
 })
 export class AppModule {}

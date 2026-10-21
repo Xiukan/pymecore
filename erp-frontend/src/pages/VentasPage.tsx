@@ -4,14 +4,15 @@ import CajaPos from '@/components/CajaPos'
 import { rutSinPuntos, useEmpresa } from '@/hooks/useEmpresa'
 import { nuevoUuid } from '@/utils/uuid'
 import { repartirPago } from '@/utils/pagos'
-import { getItems, getStock, getSucursales, createTransaccion, getEntidadByRut, createEntidad, getOfertas, ejecutarSync } from '@/api'
+import { esPorPeso, leerPeso } from '@/utils/peso'
+import { getPreciosVigentes, getItems, getStock, getSucursales, createTransaccion, getEntidadByRut, createEntidad, getOfertas, ejecutarSync } from '@/api'
 import { useOnlineStatus } from '@/hooks/useOnlineStatus'
 import { calcularDv, interpretarRut, rutConDv } from '@/utils/rut'
 import { generarPdfBoleta } from '@/utils/pdfBoleta'
 import type { Entidad, Item, Oferta, StockLocal, Sucursal } from '@/types'
 
 interface LineaVenta {
-  itemId: string; nombre: string; precioUnitario: number; cantidad: number; stockMax: number
+  itemId: string; nombre: string; precioUnitario: number; cantidad: number; stockMax: number; porPeso: boolean
 }
 
 const EMOJIS: [RegExp, string][] = [
@@ -73,6 +74,8 @@ export default function VentasPage() {
   const [regDireccion, setRegDireccion] = useState('')
   const [registrando, setRegistrando] = useState(false)
   const [entidadId, setEntidadId] = useState<string | undefined>()
+  // Precio que cobrará el servidor a este cliente (su lista u oferta, el menor).
+  const [preciosCliente, setPreciosCliente] = useState<Record<string, string>>({})
   // Vacío = consumidor final: el backend completa RUT y nombre desde la configuración de la empresa.
   const [rutFinal, setRutFinal] = useState('')
   const [razonSocial, setRazonSocial] = useState('')
@@ -193,7 +196,14 @@ export default function VentasPage() {
   }
 
   const precioEfectivo = (item: Item) =>
-    ofertaMap.has(item.id) ? ofertaMap.get(item.id)! : parseFloat(item.precioVenta)
+    preciosCliente[item.id] ? Number(preciosCliente[item.id]) : ofertaMap.has(item.id) ? ofertaMap.get(item.id)! : parseFloat(item.precioVenta)
+
+  useEffect(() => {
+    getPreciosVigentes(entidadId).then((r) => {
+      setPreciosCliente(r.data)
+      setLineas((prev) => prev.map((l) => (r.data[l.itemId] ? { ...l, precioUnitario: Number(r.data[l.itemId]) } : l)))
+    }).catch(() => setPreciosCliente({}))
+  }, [entidadId])
 
   const agregarItem = (item: Item) => {
     const stock = stockMap.get(item.id) ?? 0
@@ -205,7 +215,7 @@ export default function VentasPage() {
         if (existe.cantidad >= stock) { alert(`Stock máximo: ${stock}`); return prev }
         return prev.map((l) => l.itemId === item.id ? { ...l, cantidad: l.cantidad + 1 } : l)
       }
-      return [...prev, { itemId: item.id, nombre: item.nombre, precioUnitario: precio, cantidad: 1, stockMax: stock }]
+      return [...prev, { itemId: item.id, nombre: item.nombre, precioUnitario: precio, cantidad: 1, stockMax: stock, porPeso: esPorPeso(item.unidadMedida) }]
     })
   }
 
@@ -217,6 +227,11 @@ export default function VentasPage() {
       if (nueva > l.stockMax) { alert(`Stock máximo: ${l.stockMax}`); return [l] }
       return [{ ...l, cantidad: nueva }]
     }))
+  }
+
+  const fijarPeso = (itemId: string, valor: string) => {
+    const kilos = leerPeso(valor)
+    setLineas((prev) => prev.map((l) => (l.itemId === itemId && kilos !== null ? { ...l, cantidad: Math.min(kilos, l.stockMax) } : l)))
   }
 
   const eliminarLinea = (itemId: string) => setLineas((p) => p.filter((l) => l.itemId !== itemId))
@@ -405,12 +420,19 @@ export default function VentasPage() {
                 <div style={{ fontSize: 12, fontWeight: 600, color: '#2d3748', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.nombre}</div>
                 <div style={{ fontSize: 11, color: '#a0aec0' }}>${l.precioUnitario.toLocaleString('es-CL')} c/u</div>
               </div>
+              {l.porPeso ? (
+                <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}>
+                  <input aria-label={`Kilos de ${l.nombre}`} inputMode="decimal" defaultValue={String(l.cantidad).replace('.', ',')} onBlur={(e) => fijarPeso(l.itemId, e.target.value)}
+                    style={{ width: 64, padding: '4px 6px', border: '1px solid #cbd5e0', borderRadius: 8, textAlign: 'right' }} /> kg
+                </label>
+              ) : (
               <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: '#f7fafc', padding: '2px 6px', borderRadius: 20 }}>
                 <button onClick={() => cambiarCantidad(l.itemId, -1)} style={{ border: 'none', background: 'white', width: 24, height: 24, borderRadius: '50%', cursor: 'pointer', fontWeight: 700, fontSize: '0.9rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>−</button>
                 <span style={{ fontWeight: 700, minWidth: 18, textAlign: 'center', fontSize: 13 }}>{l.cantidad}</span>
                 <button onClick={() => cambiarCantidad(l.itemId, 1)} style={{ border: 'none', background: 'white', width: 24, height: 24, borderRadius: '50%', cursor: 'pointer', fontWeight: 700, fontSize: '0.9rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>+</button>
               </div>
-              <span style={{ fontWeight: 700, color: '#38a169', fontSize: 12, minWidth: 65, textAlign: 'right' }}>${(l.precioUnitario * l.cantidad).toLocaleString('es-CL')}</span>
+              )}
+              <span style={{ fontWeight: 700, color: '#38a169', fontSize: 12, minWidth: 65, textAlign: 'right' }}>${Math.round(l.precioUnitario * l.cantidad).toLocaleString('es-CL')}</span>
               <button onClick={() => eliminarLinea(l.itemId)} style={{ border: 'none', background: 'none', color: '#fc8181', cursor: 'pointer', fontSize: '0.9rem', padding: 2 }}>✕</button>
             </div>
           ))}

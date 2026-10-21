@@ -28,6 +28,13 @@ export const SECCIONES: Seccion[] = [
         roles: null,
       },
       {
+        to: '/pedidos',
+        label: 'Cotizaciones y pedidos',
+        descripcion: 'Prepara cotizaciones para clientes, imprímelas y conviértelas en venta cuando las acepten.',
+        ayuda: ['Crea la cotización con el cliente y los productos: se usan sus precios.', 'Cuando el cliente acepte, márcala y luego "Vender" emite la factura.'],
+        roles: null,
+      },
+      {
         to: '/caja',
         label: 'Caja',
         descripcion: 'Abre la caja al empezar el día y ciérrala al terminar para saber si cuadra el dinero.',

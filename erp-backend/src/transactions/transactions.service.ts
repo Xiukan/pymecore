@@ -16,6 +16,7 @@ import { SiiIntegrationService } from '../sii/sii-integration.service';
 import { reclamarFolio } from '../utils/folios.util';
 import { exigirPeriodoAbierto } from '../utils/periodos';
 import { LotesService } from '../lotes/lotes.service';
+import { preciosVigentes } from '../precios/precios';
 import { TX_OPCIONES } from '../utils/transacciones';
 import { calcularDocumento, dec, peso, share, ZERO } from '../utils/money.util';
 import { CreateTransactionDto } from './dto/create-transaction.dto';
@@ -310,26 +311,14 @@ export class TransactionsService {
     itemMap: Map<string, Item>,
     tasaIva: Prisma.Decimal,
   ) {
-    const ahora = new Date();
-    const ofertas = await tx.oferta.findMany({
-      where: {
-        itemId: { in: [...itemMap.keys()] },
-        activo: true,
-        fechaInicio: { lte: ahora },
-        fechaFin: { gte: ahora },
-      },
-    });
-    const precioOferta = new Map<string, Prisma.Decimal>();
-    for (const o of ofertas) {
-      const actual = precioOferta.get(o.itemId);
-      if (!actual || o.precioOferta.lt(actual)) precioOferta.set(o.itemId, o.precioOferta);
-    }
+    const vigentes =
+      dto.tipoTransaccion === TipoTransaccion.VENTA ? await preciosVigentes(tx, [...itemMap.values()], dto.entidadId) : new Map<string, Prisma.Decimal>();
 
     const base = dto.detalles.map((d) => {
       const item = itemMap.get(d.itemId)!;
       let precio: Prisma.Decimal;
       if (dto.tipoTransaccion === TipoTransaccion.VENTA) {
-        precio = precioOferta.get(item.id) ?? item.precioVenta;
+        precio = vigentes.get(item.id) ?? item.precioVenta;
         if (d.precioUnitario !== undefined && !dec(d.precioUnitario).eq(precio)) {
           throw new BadRequestException(
             `El precio de "${item.nombre}" cambió a $${precio.toString()}. Actualice el carrito antes de cobrar.`,

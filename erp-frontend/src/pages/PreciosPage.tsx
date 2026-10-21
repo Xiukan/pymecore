@@ -1,3 +1,4 @@
+import ListasPrecio from '@/components/ListasPrecio'
 import { useEffect, useState } from 'react'
 import { getItems, updateItem, getOfertas, createOferta, updateOferta, deleteOferta } from '@/api'
 import type { Item, Oferta } from '@/types'
@@ -346,6 +347,7 @@ export default function PreciosPage() {
           </div>
         </div>
       )}
+      <ListasPrecio />
     </div>
   )
 }

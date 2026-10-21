@@ -10,6 +10,7 @@ import LotesPage from '@/pages/LotesPage'
 import CampoPage from '@/pages/CampoPage'
 import TrabajadoresPage from '@/pages/TrabajadoresPage'
 import FinanzasPage from '@/pages/FinanzasPage'
+import PedidosPage from '@/pages/PedidosPage'
 import VentasPage from '@/pages/VentasPage'
 import InventarioPage from '@/pages/InventarioPage'
 import HistorialPage from '@/pages/HistorialPage'
@@ -80,6 +81,7 @@ export default function App() {
             <Route path="campo" element={<CampoPage />} />
             <Route path="trabajadores" element={<TrabajadoresPage />} />
             <Route path="finanzas" element={<FinanzasPage />} />
+            <Route path="pedidos" element={<PedidosPage />} />
             <Route path="cuentas" element={<CuentasPage />} />
             <Route path="configuracion" element={<ConfiguracionPage />} />
           </Route>

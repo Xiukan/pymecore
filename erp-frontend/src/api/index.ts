@@ -1,5 +1,5 @@
 import { api } from './client'
-import type { ActivoFijo, CandidatoConciliacion, CuentaBancaria, FlujoCaja, MovimientoBancario, AplicacionFitosanitaria, Carencia, Cosecha, Cuartel, InformeCostosCampo, Labor, LiquidacionTrabajador, Predio, Temporada, Trabajador, AnticipoProductor, CuentaProductor, Lote, RecepcionProductor, TrazabilidadLote, AsientoContable, Balance, CuentaContable, EstadoResultados, LibroMayor, CategoriaGasto, Libro, PorCobrar, PorPagar, ResumenIva, SesionCaja, DashboardReporte, DteRecibido, Gasto, ListadoGastos, Empresa, Entidad, OrdenCompra, UnidadMedida, GuiaDespacho, Item, Oferta, StockLocal, Sucursal, Transaccion, Usuario } from '@/types'
+import type { ListaPrecio, Pedido, ActivoFijo, CandidatoConciliacion, CuentaBancaria, FlujoCaja, MovimientoBancario, AplicacionFitosanitaria, Carencia, Cosecha, Cuartel, InformeCostosCampo, Labor, LiquidacionTrabajador, Predio, Temporada, Trabajador, AnticipoProductor, CuentaProductor, Lote, RecepcionProductor, TrazabilidadLote, AsientoContable, Balance, CuentaContable, EstadoResultados, LibroMayor, CategoriaGasto, Libro, PorCobrar, PorPagar, ResumenIva, SesionCaja, DashboardReporte, DteRecibido, Gasto, ListadoGastos, Empresa, Entidad, OrdenCompra, UnidadMedida, GuiaDespacho, Item, Oferta, StockLocal, Sucursal, Transaccion, Usuario } from '@/types'
 
 // Auth
 export const login = (username: string, password: string) =>
@@ -434,3 +434,27 @@ export const crearActivo = (data: {
   medioPago?: string
 }) => api.post<ActivoFijo>('/finanzas/activos', data)
 export const bajaActivo = (id: string, fecha: string) => api.patch(`/finanzas/activos/${id}/baja`, { fecha })
+
+// Listas de precios y pedidos
+export const getPreciosVigentes = (entidadId?: string) =>
+  api.get<Record<string, string>>('/precios/vigentes', { params: { entidadId } })
+export const getListasPrecio = () => api.get<ListaPrecio[]>('/precios/listas')
+export const crearListaPrecio = (nombre: string) => api.post<ListaPrecio>('/precios/listas', { nombre })
+export const guardarPreciosLista = (id: string, precios: { itemId: string; precio: number }[]) =>
+  api.put(`/precios/listas/${id}/precios`, { precios })
+export const asignarListaCliente = (clienteId: string, listaPrecioId: string | null) =>
+  api.patch(`/precios/clientes/${clienteId}/lista`, { listaPrecioId })
+export const getPedidos = (estado?: string) => api.get<Pedido[]>('/pedidos', { params: { estado } })
+export const crearPedido = (data: {
+  entidadId: string
+  sucursalId: string
+  confirmado?: boolean
+  validoHasta?: string
+  fechaEntrega?: string
+  observaciones?: string
+  detalles: { itemId: string; cantidad: number }[]
+}) => api.post<Pedido>('/pedidos', data)
+export const confirmarPedido = (id: string) => api.patch<Pedido>(`/pedidos/${id}/confirmar`, {})
+export const anularPedido = (id: string) => api.patch<Pedido>(`/pedidos/${id}/anular`, {})
+export const venderPedido = (id: string, medioPago: string, tipoDocumento?: number) =>
+  api.post<{ pedido: Pedido; venta: Transaccion }>(`/pedidos/${id}/vender`, { medioPago, tipoDocumento })
