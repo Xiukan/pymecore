@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
-import { descartarDte, getDtes, getOrdenesCompra, importarDte, registrarGastoDte } from '@/api'
-import type { DteRecibido, EstadoDteRecibido, OrdenCompra } from '@/types'
+import { descartarDte, getCategoriasGasto, getDtes, getOrdenesCompra, importarDte, registrarGastoDte } from '@/api'
+import type { CategoriaGasto, DteRecibido, EstadoDteRecibido, OrdenCompra } from '@/types'
+import { leerXml } from '@/utils/xml'
 
 const clp = (v: string | number) => `$${Math.round(Number(v)).toLocaleString('es-CL')}`
 const fecha = (v: string) => new Date(v).toLocaleDateString('es-CL', { timeZone: 'UTC' })
@@ -15,14 +16,6 @@ const ESTADO: Record<EstadoDteRecibido, [string, string]> = {
   ASOCIADO_OC: ['Asociado a OC', 'bg-green-100 text-green-700'],
   GASTO: ['Gasto', 'bg-blue-100 text-blue-700'],
   DESCARTADO: ['Descartado', 'bg-gray-200 text-gray-600'],
-}
-
-/** El SII publica los XML en ISO-8859-1; se respeta la codificación declarada en el prólogo. */
-async function leerXml(archivo: File): Promise<string> {
-  const bytes = await archivo.arrayBuffer()
-  const prologo = new TextDecoder('ascii').decode(bytes.slice(0, 200))
-  const codificacion = /encoding=["']([^"']+)["']/i.exec(prologo)?.[1] ?? 'utf-8'
-  return new TextDecoder(codificacion).decode(bytes)
 }
 
 export default function DteRecibidosPanel({
@@ -41,6 +34,8 @@ export default function DteRecibidosPanel({
   const [ordenElegida, setOrdenElegida] = useState('')
   const [error, setError] = useState('')
   const [ordenes, setOrdenes] = useState<OrdenCompra[]>([])
+  const [categorias, setCategorias] = useState<CategoriaGasto[]>([])
+  useEffect(() => { getCategoriasGasto().then((r) => setCategorias(r.data.filter((c) => c.activa))).catch(() => {}) }, [])
 
   const cargar = () => getDtes(estado || undefined).then((r) => setDtes(r.data)).catch((e) => setError(mensajeError(e)))
   useEffect(() => { cargar() }, [estado, version])
@@ -213,10 +208,17 @@ export default function DteRecibidosPanel({
                 <div className="space-y-2">
                   <p className="text-xs font-semibold text-gray-500 uppercase">Servicio o gasto sin OC</p>
                   <div className="flex gap-2">
-                    <input value={categoria} maxLength={50} onChange={(e) => setCategoria(e.target.value)} placeholder="Categoría (ej. Telefonía)" className={input} />
-                    <button disabled={!categoria.trim()} onClick={() => ejecutar(() => registrarGastoDte(abierto.id, { categoria }))} className="text-sm px-3 py-2 rounded-lg bg-blue-600 text-white disabled:opacity-50 whitespace-nowrap">Registrar gasto</button>
+                    <select value={categoria} onChange={(e) => setCategoria(e.target.value)} className={input}>
+                      <option value="">Categoría...</option>
+                      {categorias.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                    </select>
+                    <button disabled={!categoria} onClick={() => ejecutar(() => registrarGastoDte(abierto.id, { categoriaId: categoria }))} className="text-sm px-3 py-2 rounded-lg bg-blue-600 text-white disabled:opacity-50 whitespace-nowrap">Registrar gasto</button>
                   </div>
-                  <p className="text-xs text-gray-400">Se registra el neto {clp(Number(abierto.montoNeto) + Number(abierto.montoExento))}; el IVA queda como crédito fiscal.</p>
+                  <p className="text-xs text-gray-400">
+                    {categorias.find((c) => c.id === categoria)?.ivaRecuperable === false
+                      ? `Esta categoría no recupera IVA: el gasto es el total ${clp(abierto.montoTotal)}.`
+                      : `Se registra el neto ${clp(Number(abierto.montoNeto) + Number(abierto.montoExento))}; el IVA queda como crédito fiscal.`}
+                  </p>
                 </div>
                 <div className="md:col-span-2 text-right">
                   <button onClick={() => { const m = window.prompt('Motivo del descarte'); if (m) ejecutar(() => descartarDte(abierto.id, m)) }} className="text-sm text-red-600 hover:underline">Descartar documento</button>

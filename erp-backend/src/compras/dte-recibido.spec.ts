@@ -1,35 +1,6 @@
 import { BadRequestException } from '@nestjs/common'
-import * as forge from 'node-forge'
 import { leerDteRecibido, normalizarRut } from './dte-recibido'
-
-// Llave de prueba que hace las veces del CAF: el timbre se firma igual que el SII (SHA1withRSA sobre el DD).
-const llave = forge.pki.rsa.generateKeyPair({ bits: 512, e: 3 })
-const b64 = (n: forge.jsbn.BigInteger) => Buffer.from(n.toString(16).padStart(2, '0'), 'hex').toString('base64')
-
-function dteXml(opts: { totales?: string; detalle?: string; dd?: (dd: string) => string; tipo?: string; raiz?: 'envio' | 'dte' } = {}) {
-  const dd =
-    `<DD><RE>76543210-3</RE><TD>33</TD><F>1776</F><FE>2026-08-18</FE><RR>77094287-K</RR>` +
-    `<RSR>CLIENTE</RSR><MNT>11900</MNT><IT1>Producto</IT1>` +
-    `<CAF version="1.0"><DA><RE>76543210-3</RE><RSAPK><M>${b64(llave.publicKey.n)}</M><E>${b64(llave.publicKey.e)}</E></RSAPK></DA></CAF>` +
-    `<TSTED>2026-08-18T12:00:00</TSTED></DD>`
-  const md = forge.md.sha1.create()
-  md.update(dd)
-  const frmt = Buffer.from(llave.privateKey.sign(md), 'binary').toString('base64')
-  const dte =
-    `<DTE xmlns="http://www.sii.cl/SiiDte" version="1.0"><Documento ID="T33F1776"><Encabezado>` +
-    `<IdDoc><TipoDTE>${opts.tipo ?? '33'}</TipoDTE><Folio>1776</Folio><FchEmis>2026-08-18</FchEmis><FchVenc>2026-09-17</FchVenc></IdDoc>` +
-    `<Emisor><RUTEmisor>76543210-3</RUTEmisor><RznSoc>Proveedor SpA</RznSoc><DirOrigen>Calle 1</DirOrigen><CmnaOrigen>Talca</CmnaOrigen></Emisor>` +
-    `<Receptor><RUTRecep>77094287-K</RUTRecep></Receptor>` +
-    (opts.totales ?? `<Totales><MntNeto>10000</MntNeto><TasaIVA>19</TasaIVA><IVA>1900</IVA><MntTotal>11900</MntTotal></Totales>`) +
-    `</Encabezado>` +
-    (opts.detalle ?? `<Detalle><NroLinDet>1</NroLinDet><NmbItem>Producto</NmbItem><QtyItem>10</QtyItem><PrcItem>1000</PrcItem><MontoItem>10000</MontoItem></Detalle>`) +
-    `<Referencia><NroLinRef>1</NroLinRef><TpoDocRef>801</TpoDocRef><FolioRef>42</FolioRef></Referencia>` +
-    `<TED version="1.0">\n  ${(opts.dd ?? ((x) => x))(dd).replace(/></g, '>\n    <')}\n  <FRMT algoritmo="SHA1withRSA">${frmt}</FRMT></TED>` +
-    `</Documento></DTE>`
-  return opts.raiz === 'dte'
-    ? `<?xml version="1.0" encoding="ISO-8859-1"?>${dte}`
-    : `<?xml version="1.0" encoding="ISO-8859-1"?><EnvioDTE xmlns="http://www.sii.cl/SiiDte" version="1.0"><SetDTE ID="S1">${dte}</SetDTE></EnvioDTE>`
-}
+import { dteSintetico as dteXml } from '../../test/fixtures/dte-sintetico'
 
 describe('DTE recibido', () => {
   it('lee un EnvioDTE: cabecera, totales, detalle y referencia a la OC', () => {

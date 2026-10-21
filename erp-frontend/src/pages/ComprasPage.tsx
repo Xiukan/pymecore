@@ -1,3 +1,4 @@
+import SugerenciaCompra from '@/components/SugerenciaCompra'
 import { useEffect, useMemo, useState } from 'react'
 import { useAuth } from '@/context/AuthContext'
 import {
@@ -252,11 +253,13 @@ export default function ComprasPage() {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold text-gray-900">Compras a proveedores</h1>
+        <h1 className="text-xl font-semibold text-gray-900">Compras</h1>
         <button onClick={abrirNueva} className={`${btn} bg-blue-600 hover:bg-blue-700 text-white`}>
           Nueva orden de compra
         </button>
       </div>
+
+      <SugerenciaCompra sucursalId={filtroSucursal || user?.sucursalId || sucursales[0]?.id || ''} />
 
       <div className="flex gap-1 border-b border-gray-200">
         {([['ordenes', 'Órdenes de compra'], ['dte', 'DTE recibidos']] as const).map(([id, label]) => (

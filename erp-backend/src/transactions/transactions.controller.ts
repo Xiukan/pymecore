@@ -25,7 +25,7 @@ export class TransactionsController {
     if (dto.tipoTransaccion === TipoTransaccion.MERMA && !['Administrador', 'Encargado'].includes(req.user.rol)) {
       throw new ForbiddenException('Solo Administrador o Encargado registran mermas.');
     }
-    return this.service.create(dto, req.user.id, clave);
+    return this.service.create(dto, req.user.id, clave, req.user.rol);
   }
 
   @Get()

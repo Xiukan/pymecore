@@ -45,6 +45,17 @@ export class CreateDetalleDto {
   descuentoLinea?: number;
 }
 
+export class PagoDto {
+  @ApiProperty({ enum: ['Efectivo', 'Tarjeta', 'Transferencia'] })
+  @IsIn(['Efectivo', 'Tarjeta', 'Transferencia'])
+  medioPago: MedioPago;
+
+  @ApiProperty({ example: 5000 })
+  @IsNumber({ maxDecimalPlaces: 0 })
+  @Min(1)
+  monto: number;
+}
+
 export class CreateTransactionDto {
   @ApiProperty({ example: 'uuid-de-sucursal' })
   @IsString()
@@ -111,6 +122,15 @@ export class CreateTransactionDto {
   @MaxLength(200)
   @IsOptional()
   motivoMerma?: string;
+
+  @ApiPropertyOptional({ type: [PagoDto], description: 'Venta pagada con más de un medio; las partes deben sumar el total.' })
+  @IsArray()
+  @ArrayMinSize(2)
+  @ArrayMaxSize(3)
+  @ValidateNested({ each: true })
+  @Type(() => PagoDto)
+  @IsOptional()
+  pagos?: PagoDto[];
 
   @ApiProperty({ type: [CreateDetalleDto] })
   @IsArray()

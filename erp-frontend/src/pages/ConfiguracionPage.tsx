@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
 import { createUnidad, getUnidades, updateEmpresa } from '@/api'
 import { cargarEmpresa, invalidarEmpresa } from '@/hooks/useEmpresa'
+import { MODULOS } from '@/navegacion'
 import type { Empresa, UnidadMedida } from '@/types'
 
 const input = 'w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500'
 
-type CampoEmpresa = Exclude<keyof Empresa, 'id'>
+type CampoEmpresa = Exclude<keyof Empresa, 'id' | 'modulos'>
 
 const CAMPOS: { campo: CampoEmpresa; label: string; tipo?: 'number'; ayuda?: string }[] = [
   { campo: 'razonSocial', label: 'Razón social' },
@@ -17,6 +18,8 @@ const CAMPOS: { campo: CampoEmpresa; label: string; tipo?: 'number'; ayuda?: str
   { campo: 'diasCambio', label: 'Plazo para cambios (días)', tipo: 'number' },
   { campo: 'rutConsumidorFinal', label: 'RUT consumidor final', ayuda: 'Se usa en boletas sin RUT de cliente' },
   { campo: 'nombreConsumidorFinal', label: 'Nombre consumidor final' },
+  { campo: 'topeGastoSinDocumento', label: 'Tope gasto sin documento ($)', tipo: 'number' },
+  { campo: 'tasaRetencionHonorarios', label: 'Retención boletas de honorarios (%)', tipo: 'number', ayuda: 'Tasa vigente según el SII para el año' },
 ]
 
 const mensajeError = (e: any) => {
@@ -33,7 +36,7 @@ export default function ConfiguracionPage() {
 
   useEffect(() => {
     cargarEmpresa().then((e) => {
-      const { id: _id, ...resto } = e
+      const { id: _id, modulos: _modulos, ...resto } = e
       setForm(Object.fromEntries(Object.entries(resto).map(([k, v]) => [k, String(v)])) as Record<CampoEmpresa, string>)
     })
     getUnidades().then((r) => setUnidades(r.data))
@@ -44,7 +47,13 @@ export default function ConfiguracionPage() {
     setGuardando(true)
     setAviso(null)
     try {
-      await updateEmpresa({ ...form, tasaIva: Number(form.tasaIva), diasCambio: Number(form.diasCambio) })
+      await updateEmpresa({
+        ...form,
+        tasaIva: Number(form.tasaIva),
+        diasCambio: Number(form.diasCambio),
+        topeGastoSinDocumento: Number(form.topeGastoSinDocumento),
+        tasaRetencionHonorarios: Number(form.tasaRetencionHonorarios),
+      })
       invalidarEmpresa()
       setAviso({ ok: true, texto: 'Datos de la empresa actualizados.' })
     } catch (e) {
@@ -69,13 +78,15 @@ export default function ConfiguracionPage() {
 
   return (
     <div className="space-y-6 max-w-4xl">
-      <h1 className="text-xl font-semibold text-gray-900">Configuración</h1>
+      <h1 className="text-xl font-semibold text-gray-900">Datos de la empresa</h1>
 
       {aviso && (
         <p className={`text-sm rounded-lg px-3 py-2 ${aviso.ok ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
           {aviso.texto}
         </p>
       )}
+
+      <Modulos />
 
       <section className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 space-y-4">
         <div>
@@ -134,5 +145,41 @@ export default function ConfiguracionPage() {
         </div>
       </section>
     </div>
+  )
+}
+
+function Modulos() {
+  const [activos, setActivos] = useState<string[] | null>(null)
+  const [msg, setMsg] = useState('')
+  useEffect(() => { cargarEmpresa().then((e) => setActivos(e.modulos ?? MODULOS.map((m) => m.id))) }, [])
+  if (!activos) return null
+  const cambiar = async (id: string, on: boolean) => {
+    const nuevos = on ? [...activos, id] : activos.filter((m) => m !== id)
+    setActivos(nuevos)
+    setMsg('')
+    try {
+      await updateEmpresa({ modulos: nuevos })
+      invalidarEmpresa()
+      setMsg('Guardado. El menú se actualiza al recargar la página.')
+    } catch {
+      setMsg('No se pudo guardar.')
+    }
+  }
+  return (
+    <section className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 space-y-3">
+      <div>
+        <h2 className="text-sm font-semibold text-gray-700">¿Qué usa tu negocio?</h2>
+        <p className="text-sm text-gray-500">Activa solo lo que necesitas: lo demás no aparece en el menú. Vender, caja, productos, gastos e impuestos están siempre.</p>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        {MODULOS.map((m) => (
+          <label key={m.id} className="flex items-start gap-3 rounded-lg border border-gray-200 px-3 py-2 cursor-pointer">
+            <input type="checkbox" className="mt-1" checked={activos.includes(m.id)} onChange={(e) => cambiar(m.id, e.target.checked)} />
+            <span><span className="font-medium text-gray-900">{m.nombre}</span><br /><span className="text-sm text-gray-500">{m.descripcion}</span></span>
+          </label>
+        ))}
+      </div>
+      {msg && <p className="text-sm text-gray-600">{msg}</p>}
+    </section>
   )
 }

@@ -1,5 +1,7 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsInt, IsNumber, IsOptional, IsString, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsIn, IsInt, IsNumber, IsOptional, IsString, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
+
+export const MODULOS = ['contabilidad', 'pedidos', 'productores', 'campo', 'finanzas', 'despachos'];
 
 const RUT = /^\d{1,2}\.?\d{3}\.?\d{3}-[\dkK]$/;
 
@@ -34,6 +36,27 @@ export class UpdateEmpresaDto {
   rutConsumidorFinal?: string;
 
   @ApiPropertyOptional() @IsString() @MinLength(1) @MaxLength(100) @IsOptional() nombreConsumidorFinal?: string;
+
+  @ApiPropertyOptional({ example: 50000, description: 'Monto máximo de un gasto sin documento' })
+  @IsInt()
+  @Min(0)
+  @Max(10_000_000)
+  @IsOptional()
+  topeGastoSinDocumento?: number;
+
+  @ApiPropertyOptional({ example: 15.25, description: 'Retención de boletas de honorarios (%)' })
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(100)
+  @IsOptional()
+  tasaRetencionHonorarios?: number;
+
+  @ApiPropertyOptional({ description: `Módulos visibles en el menú: ${MODULOS.join(', ')}` })
+  @IsArray()
+  @ArrayMaxSize(20)
+  @IsIn(MODULOS, { each: true })
+  @IsOptional()
+  modulos?: string[];
 }
 
 export class CreateUnidadDto {

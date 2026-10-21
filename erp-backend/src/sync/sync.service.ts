@@ -7,6 +7,8 @@ import { reclamarFolio } from '../utils/folios.util';
 
 class SinFolioError extends Error {}
 
+const ENVIO_ATASCADO_MS = 10 * 60_000;
+
 @Injectable()
 export class SyncService {
   private readonly logger = new Logger(SyncService.name);
@@ -28,6 +30,11 @@ export class SyncService {
   }
 
   async sincronizar(sucursalId?: string) {
+    // Una venta que quedó "enviando" porque el servidor se cayó a mitad vuelve a la cola.
+    await this.prisma.transaccion.updateMany({
+      where: { sincronizacion: 'ENVIANDO', OR: [{ enviandoDesde: null }, { enviandoDesde: { lt: new Date(Date.now() - ENVIO_ATASCADO_MS) } }] },
+      data: { sincronizacion: 'PENDIENTE', enviandoDesde: null },
+    });
     const pendientes = await this.prisma.transaccion.findMany({
       where: {
         sincronizacion: 'PENDIENTE',
@@ -48,7 +55,7 @@ export class SyncService {
       // Reserva: si otra sincronización ya la tomó, count es 0 y no se envía dos veces.
       const { count } = await this.prisma.transaccion.updateMany({
         where: { id: tx.id, sincronizacion: 'PENDIENTE' },
-        data: { sincronizacion: 'ENVIANDO' },
+        data: { sincronizacion: 'ENVIANDO', enviandoDesde: new Date() },
       });
       if (count !== 1) continue;
       try {

@@ -1,0 +1,102 @@
+import { abrirCaja, auth, CASA_MATRIZ, cerrar, Contexto, iniciar, SUCURSAL_NORTE } from './helpers'
+
+describe('caja', () => {
+  let ctx: Contexto
+  let cafe: string
+  const venta = (medioPago = 'Efectivo', token = ctx.vendedor) =>
+    ctx.http().post('/transactions').set(auth(token))
+      .send({ sucursalId: CASA_MATRIZ, tipoTransaccion: 'VENTA', medioPago, detalles: [{ itemId: cafe, cantidad: 1, precioUnitario: 3490 }] })
+  const cerrarCaja = (id: string, efectivoContado: number, token = ctx.vendedor) =>
+    ctx.http().post(`/caja/${id}/cerrar`).set(auth(token)).send({ efectivoContado })
+
+  beforeAll(async () => {
+    ctx = await iniciar()
+    cafe = await ctx.item('ITEM-001')
+    await ctx.db.stockLocal.updateMany({ where: { sucursalId: CASA_MATRIZ }, data: { stockActual: 1000 } })
+    await ctx.db.sesionCaja.updateMany({ where: { estado: 'ABIERTA' }, data: { estado: 'CERRADA', cerradaEn: new Date(), efectivoContado: 0 } })
+  })
+  afterAll(() => cerrar(ctx))
+
+  it('sin caja abierta no se vende', () => venta().expect(400))
+
+  it('pago mixto: cada parte entra a su medio y deben sumar el total', async () => {
+    const { id } = await abrirCaja(ctx, ctx.vendedor, CASA_MATRIZ, 0)
+    const mixta = (pagos: object[]) =>
+      ctx.http().post('/transactions').set(auth(ctx.vendedor))
+        .send({ sucursalId: CASA_MATRIZ, tipoTransaccion: 'VENTA', medioPago: 'Efectivo', pagos, detalles: [{ itemId: cafe, cantidad: 1, precioUnitario: 3490 }] })
+    await mixta([{ medioPago: 'Efectivo', monto: 1000 }, { medioPago: 'Tarjeta', monto: 2000 }]).expect(400)
+    await mixta([{ medioPago: 'Efectivo', monto: 1490 }, { medioPago: 'Efectivo', monto: 2000 }]).expect(400)
+    await mixta([{ medioPago: 'Credito', monto: 1490 }, { medioPago: 'Efectivo', monto: 2000 }]).expect(400)
+    const v = (await mixta([{ medioPago: 'Efectivo', monto: 1490 }, { medioPago: 'Tarjeta', monto: 2000 }]).expect(201)).body
+    expect(v.medioPago).toBe('Tarjeta')
+    const { resumen } = (await ctx.http().get('/caja/actual').set(auth(ctx.vendedor)).expect(200)).body
+    expect(resumen.efectivoEsperado).toBe('1490')
+    expect(resumen.totalVentas).toBe('3490')
+    expect(resumen.porMedio.find((m: any) => m.medio === 'Tarjeta').montoVentas).toBe('2000')
+    await cerrarCaja(id, 1490).expect(201)
+  })
+
+  it('una sola caja abierta por cajero y solo en su sucursal', async () => {
+    await ctx.http().post('/caja/abrir').set(auth(ctx.vendedor)).send({ sucursalId: SUCURSAL_NORTE, montoApertura: 0 }).expect(403)
+    await ctx.http().post('/caja/abrir').set(auth(ctx.vendedor)).send({ sucursalId: CASA_MATRIZ, montoApertura: 20000 }).expect(201)
+    await ctx.http().post('/caja/abrir').set(auth(ctx.vendedor)).send({ sucursalId: CASA_MATRIZ, montoApertura: 20000 }).expect(409)
+  })
+
+  it('el arqueo suma ventas en efectivo, separa tarjeta y descuenta reembolsos en efectivo', async () => {
+    const { id } = await abrirCaja(ctx, ctx.vendedor, CASA_MATRIZ, 20000)
+    await venta('Efectivo').expect(201)
+    await venta('Efectivo').expect(201)
+    const conTarjeta = await venta('Tarjeta').expect(201)
+    const origen = (await venta('Efectivo', ctx.admin).expect(400)).body // el admin no tiene caja: no vende
+    expect(origen.message).toMatch(/Abra la caja/)
+    await ctx.http().post('/transactions').set(auth(ctx.admin)).send({
+      sucursalId: CASA_MATRIZ, tipoTransaccion: 'NOTA_CREDITO', medioPago: 'Efectivo', transaccionOrigenId: conTarjeta.body.id, detalles: [{ itemId: cafe, cantidad: 1 }],
+    }).expect(400) // reembolso en efectivo exige caja abierta de quien lo entrega
+
+    const actual = (await ctx.http().get('/caja/actual').set(auth(ctx.vendedor)).expect(200)).body
+    expect(actual.resumen.efectivoEsperado).toBe('26980')
+
+    const { body } = await cerrarCaja(id, 26000).expect(201)
+    expect([body.estado, body.efectivoEsperado, body.diferencia]).toEqual(['CERRADA', '26980', '-980'])
+    expect(body.resumen.porMedio.find((m: any) => m.medio === 'Tarjeta').montoVentas).toBe('3490')
+    await cerrarCaja(id, 26000).expect(400)
+    await venta().expect(400)
+  })
+
+  it('cerrar mientras entran ventas: el arqueo cuadra con las ventas ligadas a la sesión', async () => {
+    const paso = (nombre: string) => (err: unknown) => {
+      throw new Error(`Falló "${nombre}": ${err instanceof Error ? err.message : String(err)}`)
+    }
+    const { id } = await abrirCaja(ctx, ctx.vendedor, CASA_MATRIZ, 0).catch(paso('abrir caja'))
+    const [cierre, ...ventas] = await Promise.all([
+      new Promise<any>((r) => setTimeout(() => r(cerrarCaja(id, 0)), 30)),
+      ...Array.from({ length: 6 }, () => venta()),
+    ]).catch(paso('cierre y ventas en paralelo'))
+    const ligadas = await ctx.db.transaccion.aggregate({ where: { sesionCajaId: id }, _sum: { montoTotal: true }, _count: true })
+    // Si falla (se vio una vez, sin reproducirse en decenas de corridas), deja todo el contexto.
+    const detalle = JSON.stringify({
+      cierre: { status: cierre.status, body: cierre.body },
+      ventas: ventas.map((v) => ({ status: v.status, mensaje: v.body?.message, sesion: v.body?.sesionCajaId })),
+      ligadas: { cantidad: ligadas._count, suma: ligadas._sum.montoTotal },
+    })
+    const ok =
+      cierre.status === 201 &&
+      Number(cierre.body.efectivoEsperado) === Number(ligadas._sum.montoTotal ?? 0) &&
+      ligadas._count === ventas.filter((v) => v.status === 201).length
+    if (!ok) throw new Error(`Arqueo inconsistente con ventas concurrentes: ${detalle}`)
+  })
+
+  it('un vendedor no cierra la caja de otro; el administrador sí', async () => {
+    const { id } = await abrirCaja(ctx, ctx.vendedor, CASA_MATRIZ, 0)
+    const otro = await ctx.http().post('/usuarios').set(auth(ctx.admin)).send({ username: `vend${Date.now()}`, password: 'clave123', nombreCompleto: 'Otro', rol: 'Vendedor', sucursalId: CASA_MATRIZ }).expect(201)
+    const tokenOtro = (await ctx.http().post('/auth/login').send({ username: otro.body.username, password: 'clave123' }).expect(201)).body.accessToken
+    await cerrarCaja(id, 0, tokenOtro).expect(403)
+    await cerrarCaja(id, 0, ctx.admin).expect(201)
+  })
+
+  it('historial: el vendedor ve solo sus cajas', async () => {
+    const propias = (await ctx.http().get('/caja/sesiones').set(auth(ctx.vendedor)).expect(200)).body
+    const vendedor = await ctx.db.usuario.findUniqueOrThrow({ where: { username: 'vendedor1' } })
+    expect(propias.every((s: any) => s.usuarioId === vendedor.id)).toBe(true)
+  })
+})

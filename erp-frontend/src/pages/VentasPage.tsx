@@ -1,15 +1,18 @@
 import { useEffect, useRef, useState } from 'react'
 import { useAuth } from '@/context/AuthContext'
+import CajaPos from '@/components/CajaPos'
 import { rutSinPuntos, useEmpresa } from '@/hooks/useEmpresa'
 import { nuevoUuid } from '@/utils/uuid'
-import { getItems, getStock, getSucursales, createTransaccion, getEntidadByRut, createEntidad, getOfertas, ejecutarSync } from '@/api'
+import { repartirPago } from '@/utils/pagos'
+import { esPorPeso, leerPeso } from '@/utils/peso'
+import { getPreciosVigentes, getItems, getStock, getSucursales, createTransaccion, getEntidadByRut, createEntidad, getOfertas, ejecutarSync } from '@/api'
 import { useOnlineStatus } from '@/hooks/useOnlineStatus'
-import { validarRut, calcularDv, rutConDv, formatRut } from '@/utils/rut'
+import { calcularDv, interpretarRut, rutConDv } from '@/utils/rut'
 import { generarPdfBoleta } from '@/utils/pdfBoleta'
 import type { Entidad, Item, Oferta, StockLocal, Sucursal } from '@/types'
 
 interface LineaVenta {
-  itemId: string; nombre: string; precioUnitario: number; cantidad: number; stockMax: number
+  itemId: string; nombre: string; precioUnitario: number; cantidad: number; stockMax: number; porPeso: boolean
 }
 
 const EMOJIS: [RegExp, string][] = [
@@ -43,6 +46,11 @@ export default function VentasPage() {
   const online = useOnlineStatus()
   const [sucursales, setSucursales] = useState<Sucursal[]>([])
   const [sucursalId, setSucursalId] = useState(user?.sucursalId ?? '')
+  const [medioPago, setMedioPago] = useState<'Efectivo' | 'Tarjeta' | 'Transferencia' | 'Credito' | 'Mixto'>('Efectivo')
+  const [efectivoMixto, setEfectivoMixto] = useState('')
+  const [otroMixto, setOtroMixto] = useState<'Tarjeta' | 'Transferencia'>('Tarjeta')
+  const [cajaAbierta, setCajaAbierta] = useState(false)
+  const [versionCaja, setVersionCaja] = useState(0)
   const [items, setItems] = useState<Item[]>([])
   const [ofertaMap, setOfertaMap] = useState<Map<string, number>>(new Map())
   const [stockMap, setStockMap] = useState<Map<string, number>>(new Map())
@@ -58,7 +66,7 @@ export default function VentasPage() {
   const [pasoCliente, setPasoCliente] = useState<PasoCliente>('inicio')
   const [rutInput, setRutInput] = useState('')
   const [rutError, setRutError] = useState('')
-  const [clienteBuscado, setClienteBuscado] = useState<Entidad | null>(null)
+  const [, setClienteBuscado] = useState<Entidad | null>(null)
   const [buscandoRut, setBuscandoRut] = useState(false)
   const [regNombre, setRegNombre] = useState('')
   const [regApellido, setRegApellido] = useState('')
@@ -66,6 +74,8 @@ export default function VentasPage() {
   const [regDireccion, setRegDireccion] = useState('')
   const [registrando, setRegistrando] = useState(false)
   const [entidadId, setEntidadId] = useState<string | undefined>()
+  // Precio que cobrará el servidor a este cliente (su lista u oferta, el menor).
+  const [preciosCliente, setPreciosCliente] = useState<Record<string, string>>({})
   // Vacío = consumidor final: el backend completa RUT y nombre desde la configuración de la empresa.
   const [rutFinal, setRutFinal] = useState('')
   const [razonSocial, setRazonSocial] = useState('')
@@ -116,22 +126,10 @@ export default function VentasPage() {
   }
 
   const buscarCliente = async () => {
-    const limpio = rutInput.replace(/[.\-]/g, '').toUpperCase()
-    if (!limpio) { setRutError('Ingresa un RUT'); return }
-
-    let rutFormateado: string
-    if (limpio.length >= 2 && !limpio.includes('-')) {
-      const cuerpo = limpio.replace(/[kK]/g, '')
-      const dvCalculado = calcularDv(cuerpo)
-      rutFormateado = `${cuerpo}-${dvCalculado}`
-    } else {
-      rutFormateado = limpio
-    }
-
-    if (!validarRut(rutFormateado)) {
-      const cuerpo = limpio.replace(/[kK-]/g, '')
-      const dvEsperado = calcularDv(cuerpo)
-      setRutError(`RUT inválido. Dígito verificador correcto: ${dvEsperado.toUpperCase()}`)
+    const { rut: rutFormateado, valido, dvEsperado } = interpretarRut(rutInput)
+    if (!rutFormateado) { setRutError('Ingresa un RUT'); return }
+    if (!valido) {
+      setRutError(`RUT inválido. Dígito verificador correcto: ${dvEsperado}`)
       return
     }
 
@@ -198,7 +196,14 @@ export default function VentasPage() {
   }
 
   const precioEfectivo = (item: Item) =>
-    ofertaMap.has(item.id) ? ofertaMap.get(item.id)! : parseFloat(item.precioVenta)
+    preciosCliente[item.id] ? Number(preciosCliente[item.id]) : ofertaMap.has(item.id) ? ofertaMap.get(item.id)! : parseFloat(item.precioVenta)
+
+  useEffect(() => {
+    getPreciosVigentes(entidadId).then((r) => {
+      setPreciosCliente(r.data)
+      setLineas((prev) => prev.map((l) => (r.data[l.itemId] ? { ...l, precioUnitario: Number(r.data[l.itemId]) } : l)))
+    }).catch(() => setPreciosCliente({}))
+  }, [entidadId])
 
   const agregarItem = (item: Item) => {
     const stock = stockMap.get(item.id) ?? 0
@@ -210,7 +215,7 @@ export default function VentasPage() {
         if (existe.cantidad >= stock) { alert(`Stock máximo: ${stock}`); return prev }
         return prev.map((l) => l.itemId === item.id ? { ...l, cantidad: l.cantidad + 1 } : l)
       }
-      return [...prev, { itemId: item.id, nombre: item.nombre, precioUnitario: precio, cantidad: 1, stockMax: stock }]
+      return [...prev, { itemId: item.id, nombre: item.nombre, precioUnitario: precio, cantidad: 1, stockMax: stock, porPeso: esPorPeso(item.unidadMedida) }]
     })
   }
 
@@ -222,6 +227,11 @@ export default function VentasPage() {
       if (nueva > l.stockMax) { alert(`Stock máximo: ${l.stockMax}`); return [l] }
       return [{ ...l, cantidad: nueva }]
     }))
+  }
+
+  const fijarPeso = (itemId: string, valor: string) => {
+    const kilos = leerPeso(valor)
+    setLineas((prev) => prev.map((l) => (l.itemId === itemId && kilos !== null ? { ...l, cantidad: Math.min(kilos, l.stockMax) } : l)))
   }
 
   const eliminarLinea = (itemId: string) => setLineas((p) => p.filter((l) => l.itemId !== itemId))
@@ -240,6 +250,11 @@ export default function VentasPage() {
       setPasoCliente('buscar')
       return
     }
+    const pagos = medioPago === 'Mixto' ? repartirPago(total, Number(efectivoMixto), otroMixto) : null
+    if (medioPago === 'Mixto' && !pagos) {
+      setMensaje({ tipo: 'err', texto: 'Indica cuánto paga en efectivo (menos que el total); el resto se cobra con el otro medio.' })
+      return
+    }
     if (!window.confirm(`¿Confirmar cobro de $${Math.round(total).toLocaleString('es-CL')}?`)) return
     setLoading(true)
     setMensaje(null)
@@ -249,7 +264,8 @@ export default function VentasPage() {
         sucursalId,
         entidadId,
         tipoTransaccion: 'VENTA',
-        medioPago: 'Efectivo',
+        medioPago: pagos ? 'Efectivo' : medioPago,
+        pagos: pagos ?? undefined,
         rutReceptor: rutFinal || undefined,
         razonSocialReceptor: razonSocial || undefined,
         tipoDocumento: tipoDoc,
@@ -259,6 +275,7 @@ export default function VentasPage() {
       const dte = (res.data as any)?.dte
       const folio = dte?.folio ?? (res.data as any)?.numeroFactura ?? '?'
       setUltimaVenta({ dte, transaccion: res.data, lineas: [...lineas], rutFinal, razonSocial, tipoDoc })
+      setVersionCaja((v) => v + 1)
       setLineas([])
       setBusqueda('')
       const estadoSii = online ? 'enviada al SII' : 'pendiente de envío (sin conexión)'
@@ -292,7 +309,7 @@ export default function VentasPage() {
       emisor: empresa,
       rutReceptor: rut || empresa.rutConsumidorFinal,
       razonSocialReceptor: rs || empresa.nombreConsumidorFinal,
-      medioPago: 'Efectivo',
+      medioPago: transaccion.medioPago ?? 'Efectivo',
       sucursal: '',
       detalles: ls.map((l: LineaVenta) => ({ nombre: l.nombre, cantidad: l.cantidad, precio: l.precioUnitario, subtotal: l.precioUnitario * l.cantidad })),
       montoTotal: Math.round(ls.reduce((s: number, l: LineaVenta) => s + l.precioUnitario * l.cantidad, 0)),
@@ -312,7 +329,7 @@ export default function VentasPage() {
       {/* PANEL IZQUIERDO */}
       <div style={{ background: 'white', borderRadius: 16, padding: 18, boxShadow: '0 4px 12px rgba(0,0,0,0.06)', display: 'flex', flexDirection: 'column', gap: 12 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <h1 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: '#1a202c' }}>Punto de Venta</h1>
+          <h1 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: '#1a202c' }}>Vender</h1>
           {user?.rol === 'Administrador' && sucursales.length > 0 && (
             <select value={sucursalId} onChange={(e) => setSucursalId(e.target.value)}
               style={{ marginLeft: 'auto', border: '1px solid #e2e8f0', borderRadius: 8, padding: '6px 10px', fontSize: 13 }}>
@@ -403,12 +420,19 @@ export default function VentasPage() {
                 <div style={{ fontSize: 12, fontWeight: 600, color: '#2d3748', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.nombre}</div>
                 <div style={{ fontSize: 11, color: '#a0aec0' }}>${l.precioUnitario.toLocaleString('es-CL')} c/u</div>
               </div>
+              {l.porPeso ? (
+                <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}>
+                  <input aria-label={`Kilos de ${l.nombre}`} inputMode="decimal" defaultValue={String(l.cantidad).replace('.', ',')} onBlur={(e) => fijarPeso(l.itemId, e.target.value)}
+                    style={{ width: 64, padding: '4px 6px', border: '1px solid #cbd5e0', borderRadius: 8, textAlign: 'right' }} /> kg
+                </label>
+              ) : (
               <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: '#f7fafc', padding: '2px 6px', borderRadius: 20 }}>
                 <button onClick={() => cambiarCantidad(l.itemId, -1)} style={{ border: 'none', background: 'white', width: 24, height: 24, borderRadius: '50%', cursor: 'pointer', fontWeight: 700, fontSize: '0.9rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>−</button>
                 <span style={{ fontWeight: 700, minWidth: 18, textAlign: 'center', fontSize: 13 }}>{l.cantidad}</span>
                 <button onClick={() => cambiarCantidad(l.itemId, 1)} style={{ border: 'none', background: 'white', width: 24, height: 24, borderRadius: '50%', cursor: 'pointer', fontWeight: 700, fontSize: '0.9rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>+</button>
               </div>
-              <span style={{ fontWeight: 700, color: '#38a169', fontSize: 12, minWidth: 65, textAlign: 'right' }}>${(l.precioUnitario * l.cantidad).toLocaleString('es-CL')}</span>
+              )}
+              <span style={{ fontWeight: 700, color: '#38a169', fontSize: 12, minWidth: 65, textAlign: 'right' }}>${Math.round(l.precioUnitario * l.cantidad).toLocaleString('es-CL')}</span>
               <button onClick={() => eliminarLinea(l.itemId)} style={{ border: 'none', background: 'none', color: '#fc8181', cursor: 'pointer', fontSize: '0.9rem', padding: 2 }}>✕</button>
             </div>
           ))}
@@ -421,6 +445,31 @@ export default function VentasPage() {
             <span style={{ fontWeight: 800, fontSize: '1.5rem', color: '#38a169' }}>${Math.round(total).toLocaleString('es-CL')}</span>
           </div>
         </div>
+
+        <CajaPos sucursalId={sucursalId} version={versionCaja} onCambio={setCajaAbierta} />
+
+        {/* Medio de pago */}
+        <div style={{ display: 'grid', gridTemplateColumns: entidadId ? 'repeat(5, 1fr)' : 'repeat(4, 1fr)', gap: 8 }}>
+          {/* Crédito solo con cliente identificado; el servidor valida su cupo. */}
+          {(entidadId ? (['Efectivo', 'Tarjeta', 'Transferencia', 'Credito', 'Mixto'] as const) : (['Efectivo', 'Tarjeta', 'Transferencia', 'Mixto'] as const)).map((m) => (
+            <div key={m} onClick={() => setMedioPago(m)}
+              style={{ padding: '8px', border: `2px solid ${medioPago === m ? '#3182ce' : '#e2e8f0'}`, borderRadius: 10, textAlign: 'center', cursor: 'pointer', fontSize: 12, fontWeight: 600, background: medioPago === m ? '#ebf8ff' : 'white', color: medioPago === m ? '#2b6cb0' : '#718096' }}>
+              {m === 'Credito' ? 'Crédito' : m === 'Mixto' ? 'Dos medios' : m}
+            </div>
+          ))}
+        </div>
+        {medioPago === 'Mixto' && (
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 }}>
+            <span>Paga en efectivo $</span>
+            <input aria-label="Monto en efectivo" inputMode="numeric" value={efectivoMixto} onChange={(e) => setEfectivoMixto(e.target.value.replace(/\D/g, ''))}
+              style={{ width: 90, padding: '6px 8px', border: '1px solid #cbd5e0', borderRadius: 8 }} />
+            <span>y el resto (${Math.max(0, Math.round(total) - Number(efectivoMixto || 0)).toLocaleString('es-CL')}) con</span>
+            <select value={otroMixto} onChange={(e) => setOtroMixto(e.target.value as 'Tarjeta' | 'Transferencia')} style={{ padding: '6px', borderRadius: 8 }}>
+              <option>Tarjeta</option>
+              <option>Transferencia</option>
+            </select>
+          </div>
+        )}
 
         {/* Tipo documento */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
@@ -535,7 +584,7 @@ export default function VentasPage() {
 
         <button
           onClick={handleCobrar}
-          disabled={loading || lineas.length === 0 || !sucursalId}
+          disabled={loading || lineas.length === 0 || !sucursalId || !cajaAbierta}
           style={{
             width: '100%', padding: '18px',
             background: lineas.length === 0 || loading ? '#e2e8f0' : 'linear-gradient(135deg, #38a169, #48bb78)',

@@ -99,7 +99,7 @@ export default function MermasPage() {
 
   return (
     <div className="space-y-6 max-w-2xl">
-      <h1 className="text-xl font-semibold text-gray-900">Registro de mermas</h1>
+      <h1 className="text-xl font-semibold text-gray-900">Pérdidas (mermas)</h1>
 
       {user?.rol === 'Administrador' && sucursales.length > 0 && (
         <select

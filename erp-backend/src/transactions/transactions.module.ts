@@ -7,5 +7,6 @@ import { TransactionsService } from './transactions.service';
   imports: [SiiModule],
   controllers: [TransactionsController],
   providers: [TransactionsService],
+  exports: [TransactionsService],
 })
 export class TransactionsModule {}

@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useAuth } from '@/context/AuthContext'
 import { useEmpresa } from '@/hooks/useEmpresa'
-import { getGuias, getGuia, createGuia, recibirGuia, anularGuia, getSucursales, getItems, getStock } from '@/api'
-import { generarPdfBoleta } from '@/utils/pdfBoleta'
+import { getGuias, createGuia, recibirGuia, anularGuia, getSucursales, getItems, getStock } from '@/api'
 import jsPDF from 'jspdf'
 import type { Empresa, GuiaDespacho, Item, Sucursal } from '@/types'
 
@@ -179,7 +178,7 @@ export default function DespachosPage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <h1 className="text-xl font-semibold text-gray-900">Despacho entre sucursales</h1>
+        <h1 className="text-xl font-semibold text-gray-900">Mover mercadería entre locales</h1>
         <div className="flex gap-3 items-center">
           {sucursales.length > 0 && (
             <select

@@ -116,7 +116,7 @@ export default function HistorialPage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <h1 className="text-xl font-semibold text-gray-900">Historial de ventas</h1>
+        <h1 className="text-xl font-semibold text-gray-900">Ventas hechas</h1>
         {user?.rol === 'Administrador' && sucursales.length > 0 && (
           <select
             value={sucursalId}

@@ -3,6 +3,15 @@ import { AuthProvider, useAuth } from '@/context/AuthContext'
 import Layout from '@/components/Layout'
 import LoginPage from '@/pages/LoginPage'
 import DashboardPage from '@/pages/DashboardPage'
+import InicioPage from '@/pages/InicioPage'
+import ContabilidadPage from '@/pages/ContabilidadPage'
+import ProductoresPage from '@/pages/ProductoresPage'
+import LotesPage from '@/pages/LotesPage'
+import CampoPage from '@/pages/CampoPage'
+import TrabajadoresPage from '@/pages/TrabajadoresPage'
+import FinanzasPage from '@/pages/FinanzasPage'
+import PedidosPage from '@/pages/PedidosPage'
+import ConteoPage from '@/pages/ConteoPage'
 import VentasPage from '@/pages/VentasPage'
 import InventarioPage from '@/pages/InventarioPage'
 import HistorialPage from '@/pages/HistorialPage'
@@ -14,6 +23,10 @@ import DocumentosPage from '@/pages/DocumentosPage'
 import ClientesPage from '@/pages/ClientesPage'
 import UsuariosPage from '@/pages/UsuariosPage'
 import ComprasPage from '@/pages/ComprasPage'
+import GastosPage from '@/pages/GastosPage'
+import CajaPage from '@/pages/CajaPage'
+import LibrosPage from '@/pages/LibrosPage'
+import CuentasPage from '@/pages/CuentasPage'
 import ConfiguracionPage from '@/pages/ConfiguracionPage'
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
@@ -47,7 +60,8 @@ export default function App() {
               </RequireAuth>
             }
           >
-            <Route index element={<DashboardPage />} />
+            <Route index element={<InicioPage />} />
+            <Route path="reportes" element={<DashboardPage />} />
             <Route path="ventas" element={<VentasPage />} />
             <Route path="inventario" element={<InventarioPage />} />
             <Route path="historial" element={<HistorialPage />} />
@@ -59,6 +73,18 @@ export default function App() {
             <Route path="clientes" element={<ClientesPage />} />
             <Route path="usuarios" element={<UsuariosPage />} />
             <Route path="compras" element={<ComprasPage />} />
+            <Route path="gastos" element={<GastosPage />} />
+            <Route path="caja" element={<CajaPage />} />
+            <Route path="libros" element={<LibrosPage />} />
+            <Route path="contabilidad" element={<ContabilidadPage />} />
+            <Route path="productores" element={<ProductoresPage />} />
+            <Route path="lotes" element={<LotesPage />} />
+            <Route path="campo" element={<CampoPage />} />
+            <Route path="trabajadores" element={<TrabajadoresPage />} />
+            <Route path="finanzas" element={<FinanzasPage />} />
+            <Route path="pedidos" element={<PedidosPage />} />
+            <Route path="conteo" element={<ConteoPage />} />
+            <Route path="cuentas" element={<CuentasPage />} />
             <Route path="configuracion" element={<ConfiguracionPage />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />

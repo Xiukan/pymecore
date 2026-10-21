@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common'
+import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common'
 import { Test, TestingModule } from '@nestjs/testing'
 import { Prisma, TipoTransaccion } from '@prisma/client'
 import { TransactionsService } from './transactions.service'
@@ -13,6 +13,7 @@ describe('TransactionsService', () => {
   let service: TransactionsService
   let tx: any
   let prisma: any
+  let cajaAbierta: boolean
 
   const SUCURSAL_ID = 'sucursal-001'
   const ITEM_ID = 'item-001'
@@ -35,6 +36,7 @@ describe('TransactionsService', () => {
   })
 
   beforeEach(async () => {
+    cajaAbierta = true
     tx = {
       oferta: { findMany: jest.fn().mockResolvedValue([]) },
       stockLocal: {
@@ -52,10 +54,18 @@ describe('TransactionsService', () => {
         findUnique: jest.fn(),
       },
       transaccionDetalle: { groupBy: jest.fn().mockResolvedValue([]) },
-      $queryRaw: jest.fn().mockResolvedValue([{ numero: 1 }]),
+      movimientoLote: { findMany: jest.fn().mockResolvedValue([]) },
+      // Responde según la consulta: caja abierta del cajero y folio libre.
+      $queryRaw: jest.fn().mockImplementation((sql: TemplateStringsArray) => {
+        const texto = sql.join('?')
+        if (texto.includes('sesiones_caja')) return Promise.resolve(cajaAbierta ? [{ id: 'caja-1' }] : [])
+        if (texto.includes('folios_disponibles')) return Promise.resolve([{ numero: 1 }])
+        return Promise.resolve([])
+      }),
       operacionIdempotente: { create: jest.fn(), update: jest.fn() },
     }
     prisma = {
+      periodoCerrado: { findUnique: jest.fn().mockResolvedValue(null) },
       item: { findMany: jest.fn().mockResolvedValue([ITEM_MOCK]) },
       transaccion: { update: jest.fn(), findUniqueOrThrow: jest.fn() },
       operacionIdempotente: { findUnique: jest.fn().mockResolvedValue(null) },
@@ -142,6 +152,17 @@ describe('TransactionsService', () => {
     expect(venta.sincronizacion).toBe('PENDIENTE')
   })
 
+  it('sin caja abierta no se vende', async () => {
+    cajaAbierta = false
+    await expect(service.create(buildDto(1) as any, 'user-001')).rejects.toThrow(/Abra la caja/)
+  })
+
+  it('la venta queda ligada a la sesión de caja y exige medio de pago', async () => {
+    await service.create(buildDto(1) as any, 'user-001')
+    expect(tx.transaccion.create.mock.calls[0][0].data.sesionCajaId).toBe('caja-1')
+    await expect(service.create(buildDto(1, { medioPago: undefined }) as any, 'user-001')).rejects.toThrow(/medio de pago/)
+  })
+
   it('rechaza compras: se registran en el módulo de Compras', async () => {
     await expect(
       service.create(buildDto(1, { tipoTransaccion: TipoTransaccion.COMPRA }) as any, 'user-001'),
@@ -211,6 +232,14 @@ describe('TransactionsService', () => {
 
       expect(nc.detalles[0].subtotal).toEqual(D(3490))
       expect(nc.detalles[0].montoIva).toEqual(D(558))
+    })
+
+    it('un vendedor no registra la devolución de su propia venta', async () => {
+      tx.transaccion.findUnique.mockResolvedValue({ ...origen, usuarioId: 'vend-1' })
+
+      await expect(service.create(devolucion(1) as any, 'vend-1', undefined, 'Vendedor')).rejects.toThrow(ForbiddenException)
+      await expect(service.create(devolucion(1) as any, 'vend-2', undefined, 'Vendedor')).resolves.toBeDefined()
+      await expect(service.create(devolucion(1) as any, 'vend-1', undefined, 'Encargado')).resolves.toBeDefined()
     })
 
     it('rechaza ítems que no estaban en la venta', async () => {

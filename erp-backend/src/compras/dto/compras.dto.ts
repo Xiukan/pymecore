@@ -134,10 +134,8 @@ export class ImportarDteDto {
 }
 
 export class GastoDteDto {
-  @IsString()
-  @MinLength(1)
-  @MaxLength(50)
-  categoria: string;
+  @IsUUID('loose')
+  categoriaId: string;
 
   @IsString()
   @MaxLength(200)

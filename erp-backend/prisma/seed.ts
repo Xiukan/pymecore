@@ -126,7 +126,7 @@ async function main() {
     create: {
       id: '00000000-0000-0000-0000-000000000002',
       tipoEntidad: 'CLIENTE',
-      rut: '12345678-9',
+      rut: '12345678-5',
       nombreRazonSocial: 'Empresa Demo SpA',
       telefono: '+56912345678',
       email: 'contacto@demo.cl',
@@ -150,7 +150,7 @@ async function main() {
   console.log(`Usuarios:  admin, vendedor1`);
   console.log(`Items:     ${items.map((i) => i.codigoSku).join(', ')}`);
   console.log(`Stock:     100 unidades por item en casa matriz`);
-  console.log(`Cliente:   Empresa Demo SpA (12345678-9)`);
+  console.log(`Cliente:   Empresa Demo SpA (12345678-5)`);
   console.log(`Proveedor: Distribuidora Demo Ltda (76543210-3)`);
   console.log('Seed completado.');
 }

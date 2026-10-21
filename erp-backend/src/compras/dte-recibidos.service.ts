@@ -4,6 +4,7 @@ import { createHash } from 'crypto';
 import { UsuarioSesion } from '../auth/sucursal-scope';
 import { EmpresaService } from '../empresa/empresa.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { TX_OPCIONES } from '../utils/transacciones';
 import { leerDteRecibido, normalizarRut, TIPOS_SOPORTADOS } from './dte-recibido';
 
 const SIN_XML = {
@@ -82,7 +83,7 @@ export class DteRecibidosService {
         },
         select: SIN_XML,
       });
-    });
+    }, TX_OPCIONES);
   }
 
   listar(estado?: EstadoDteRecibido) {
@@ -100,19 +101,29 @@ export class DteRecibidosService {
   }
 
   /**
-   * Servicios y otros gastos sin OC (telefonía, arriendos, etc.). El gasto se registra por el
-   * neto + exento: el IVA es crédito fiscal y los otros impuestos se revisan aparte.
+   * Servicios y otros gastos sin OC (telefonía, arriendos, etc.), con la categoría del catálogo.
    */
-  async registrarGasto(id: string, dto: { categoria: string; descripcion?: string }, user: UsuarioSesion) {
+  async registrarGasto(id: string, dto: { categoriaId: string; descripcion?: string }, user: UsuarioSesion) {
+    const categoria = await this.prisma.categoriaGasto.findUnique({ where: { id: dto.categoriaId } });
+    if (!categoria || !categoria.activa) throw new BadRequestException('La categoría no existe o está inactiva.');
     return this.prisma.$transaction(async (tx) => {
       const dte = await this.tomarPendiente(tx, id);
+      const neto = dte.montoNeto.add(dte.montoExento);
       const gasto = await tx.gastoOperacional.create({
         data: {
           usuarioId: user.id,
-          categoria: dto.categoria.trim(),
+          categoriaId: categoria.id,
+          proveedorId: dte.proveedorId,
           descripcion: (dto.descripcion?.trim() || `${dte.razonSocialEmisor} · ${TIPOS_SOPORTADOS[dte.tipoDte]} N° ${dte.folio}`).slice(0, 200),
-          monto: dte.montoNeto.add(dte.montoExento),
+          tipoDocumento: 'FACTURA',
+          numeroDocumento: dte.folio,
+          montoNeto: neto,
+          iva: dte.iva,
+          total: dte.montoTotal,
+          // Costo para el resultado: neto si el IVA es crédito fiscal en esta categoría.
+          monto: categoria.ivaRecuperable ? neto : dte.montoTotal,
           fechaRegistro: dte.fechaEmision,
+          fechaVencimiento: dte.fechaVencimiento ?? dte.fechaEmision,
         },
       });
       return tx.dteRecibido.update({
@@ -120,7 +131,7 @@ export class DteRecibidosService {
         data: { estado: 'GASTO', gastoId: gasto.id },
         select: SIN_XML,
       });
-    });
+    }, TX_OPCIONES);
   }
 
   async descartar(id: string, motivo: string) {
@@ -131,7 +142,7 @@ export class DteRecibidosService {
         data: { estado: 'DESCARTADO', motivoDescarte: motivo.trim() },
         select: SIN_XML,
       });
-    });
+    }, TX_OPCIONES);
   }
 
   /** Bloquea el DTE y exige que siga pendiente: dos destinos simultáneos no pueden ganar ambos. */
