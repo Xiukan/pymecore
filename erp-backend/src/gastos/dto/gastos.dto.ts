@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { MedioPago, TipoDocumentoGasto } from '@prisma/client';
+import { CategoriaCosto, MedioPago, TipoDocumentoGasto } from '@prisma/client';
 import {
   IsBoolean,
   IsDateString,
@@ -17,6 +17,19 @@ import {
 export class CreateGastoDto {
   @IsUUID('loose')
   categoriaId: string;
+
+  @ApiPropertyOptional({ description: 'Campo: cuartel al que se imputa el gasto (requiere temporada)' })
+  @IsUUID('loose')
+  @IsOptional()
+  cuartelId?: string;
+
+  @IsUUID('loose')
+  @IsOptional()
+  temporadaId?: string;
+
+  @IsEnum(CategoriaCosto)
+  @IsOptional()
+  categoriaCosto?: CategoriaCosto;
 
   @ApiPropertyOptional({ description: 'Sucursal a la que se imputa; vacío = gasto de la empresa' })
   @IsUUID('loose')

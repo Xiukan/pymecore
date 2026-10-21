@@ -7,6 +7,8 @@ import InicioPage from '@/pages/InicioPage'
 import ContabilidadPage from '@/pages/ContabilidadPage'
 import ProductoresPage from '@/pages/ProductoresPage'
 import LotesPage from '@/pages/LotesPage'
+import CampoPage from '@/pages/CampoPage'
+import TrabajadoresPage from '@/pages/TrabajadoresPage'
 import VentasPage from '@/pages/VentasPage'
 import InventarioPage from '@/pages/InventarioPage'
 import HistorialPage from '@/pages/HistorialPage'
@@ -74,6 +76,8 @@ export default function App() {
             <Route path="contabilidad" element={<ContabilidadPage />} />
             <Route path="productores" element={<ProductoresPage />} />
             <Route path="lotes" element={<LotesPage />} />
+            <Route path="campo" element={<CampoPage />} />
+            <Route path="trabajadores" element={<TrabajadoresPage />} />
             <Route path="cuentas" element={<CuentasPage />} />
             <Route path="configuracion" element={<ConfiguracionPage />} />
           </Route>

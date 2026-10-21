@@ -1,5 +1,5 @@
 import { api } from './client'
-import type { AnticipoProductor, CuentaProductor, Lote, RecepcionProductor, TrazabilidadLote, AsientoContable, Balance, CuentaContable, EstadoResultados, LibroMayor, CategoriaGasto, Libro, PorCobrar, PorPagar, ResumenIva, SesionCaja, DashboardReporte, DteRecibido, Gasto, ListadoGastos, Empresa, Entidad, OrdenCompra, UnidadMedida, GuiaDespacho, Item, Oferta, StockLocal, Sucursal, Transaccion, Usuario } from '@/types'
+import type { AplicacionFitosanitaria, Carencia, Cosecha, Cuartel, InformeCostosCampo, Labor, LiquidacionTrabajador, Predio, Temporada, Trabajador, AnticipoProductor, CuentaProductor, Lote, RecepcionProductor, TrazabilidadLote, AsientoContable, Balance, CuentaContable, EstadoResultados, LibroMayor, CategoriaGasto, Libro, PorCobrar, PorPagar, ResumenIva, SesionCaja, DashboardReporte, DteRecibido, Gasto, ListadoGastos, Empresa, Entidad, OrdenCompra, UnidadMedida, GuiaDespacho, Item, Oferta, StockLocal, Sucursal, Transaccion, Usuario } from '@/types'
 
 // Auth
 export const login = (username: string, password: string) =>
@@ -267,6 +267,9 @@ export const createGasto = (data: {
   fecha: string
   fechaVencimiento?: string
   medioPago?: string
+  cuartelId?: string
+  temporadaId?: string
+  categoriaCosto?: string
 }) => api.post<Gasto>('/gastos', data)
 
 export const pagarGasto = (id: string, data: { medioPago: string; fechaPago?: string }) =>
@@ -349,3 +352,59 @@ export const getLotes = (params: { sucursalId?: string; itemId?: string; conSald
 export const getLotesPorVencer = (dias = 30, sucursalId?: string) =>
   api.get<Lote[]>('/lotes/por-vencer', { params: { dias, sucursalId } })
 export const getTrazabilidadLote = (id: string) => api.get<TrazabilidadLote>(`/lotes/${id}`)
+
+// Campo
+export const getPredios = () => api.get<Predio[]>('/campo/predios')
+export const crearPredio = (data: { nombre: string; comuna?: string; hectareas?: number }) => api.post<Predio>('/campo/predios', data)
+export const crearCuartel = (data: { predioId: string; nombre: string; cultivo: string; variedad?: string; hectareas: number }) =>
+  api.post<Cuartel>('/campo/cuarteles', data)
+export const getTemporadas = () => api.get<Temporada[]>('/campo/temporadas')
+export const crearTemporada = (data: { nombre: string; fechaInicio: string; fechaFin: string }) => api.post<Temporada>('/campo/temporadas', data)
+export const getAplicaciones = (params: { cuartelId?: string; temporadaId?: string } = {}) =>
+  api.get<AplicacionFitosanitaria[]>('/campo/aplicaciones', { params })
+export const crearAplicacion = (data: {
+  cuartelId: string
+  temporadaId: string
+  itemId: string
+  sucursalId: string
+  fecha: string
+  objetivo: string
+  dosisPorHa: number
+  carenciaDias: number
+  reingresoHoras?: number
+  aplicador: string
+  metodo?: string
+}) => api.post<AplicacionFitosanitaria>('/campo/aplicaciones', data)
+export const anularAplicacion = (id: string) => api.patch(`/campo/aplicaciones/${id}/anular`, {})
+export const getCarencias = () => api.get<Carencia[]>('/campo/carencias')
+export const getCosechas = (temporadaId?: string) => api.get<Cosecha[]>('/campo/cosechas', { params: { temporadaId } })
+export const crearCosecha = (data: { cuartelId: string; temporadaId: string; itemId: string; sucursalId: string; kilos: number; fechaVencimiento?: string }) =>
+  api.post<Cosecha>('/campo/cosechas', data)
+export const anularCosecha = (id: string) => api.patch(`/campo/cosechas/${id}/anular`, {})
+export const getCostosCampo = (temporadaId: string) => api.get<InformeCostosCampo>(`/campo/costos/${temporadaId}`)
+export const guardarPresupuesto = (temporadaId: string, lineas: { cuartelId: string; categoria: string; monto: number }[]) =>
+  api.put(`/campo/presupuestos/${temporadaId}`, { lineas })
+export const getTrabajadores = () => api.get<Trabajador[]>('/campo/trabajadores')
+export const crearTrabajador = (data: { rut: string; nombre: string; tipo?: string; contratistaId?: string; valorJornada?: number }) =>
+  api.post<Trabajador>('/campo/trabajadores', data)
+export const getLabores = (params: { trabajadorId?: string; desde?: string; hasta?: string; pendientes?: boolean } = {}) =>
+  api.get<Labor[]>('/campo/labores', { params })
+export const crearLabor = (data: {
+  trabajadorId: string
+  cuartelId?: string
+  temporadaId?: string
+  fecha: string
+  tipo: string
+  descripcion: string
+  cantidad: number
+  unidad: string
+  tarifa?: number
+}) => api.post<Labor & { advertencia: string | null }>('/campo/labores', data)
+export const eliminarLabor = (id: string) => api.delete(`/campo/labores/${id}`)
+export const crearAnticipoTrabajador = (data: { trabajadorId: string; monto: number; medioPago: string }) => api.post('/campo/anticipos', data)
+export const liquidarTrabajador = (data: { trabajadorId: string; hasta: string; medioPago: string }) =>
+  api.post<LiquidacionTrabajador>('/campo/liquidaciones', data)
+export const getLiquidaciones = (params: { desde?: string; hasta?: string } = {}) =>
+  api.get<LiquidacionTrabajador[]>('/campo/liquidaciones', { params })
+export const getAlertasContratistas = () => api.get<{ id: string; rut: string; nombreRazonSocial: string; f30Vigencia: string | null }[]>('/campo/contratistas/alertas')
+export const actualizarF30 = (id: string, f30Vigencia: string | null) => api.patch(`/campo/contratistas/${id}/f30`, { f30Vigencia })

@@ -85,6 +85,7 @@ export class GastosService {
       throw new BadRequestException('El vencimiento no puede ser anterior a la fecha del gasto.');
     }
     await exigirPeriodoAbierto(this.prisma, dto.fecha);
+    if (dto.cuartelId && !dto.temporadaId) throw new BadRequestException('Para imputar el gasto a un cuartel indica la temporada.');
 
     return this.prisma.$transaction(async (tx) => {
       const numero = dto.numeroDocumento?.trim() || null;
@@ -117,6 +118,9 @@ export class GastosService {
           sucursalId: dto.sucursalId ?? null,
           proveedorId: dto.proveedorId ?? null,
           descripcion: dto.descripcion.trim(),
+          cuartelId: dto.cuartelId ?? null,
+          temporadaId: dto.cuartelId ? dto.temporadaId : null,
+          categoriaCosto: dto.cuartelId ? (dto.categoriaCosto ?? 'OTROS') : null,
           tipoDocumento: dto.tipoDocumento,
           numeroDocumento: numero,
           ...montos,

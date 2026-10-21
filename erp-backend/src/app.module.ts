@@ -6,6 +6,7 @@ import { UsuarioIpThrottlerGuard } from './auth/guards/throttler.guard';
 import { AppController } from './app.controller';
 import { AuthModule } from './auth/auth.module';
 import { CajaModule } from './caja/caja.module';
+import { CampoModule } from './campo/campo.module';
 import { ContabilidadModule } from './contabilidad/contabilidad.module';
 import { LotesModule } from './lotes/lotes.module';
 import { ProductoresModule } from './productores/productores.module';
@@ -54,6 +55,7 @@ import { UsuariosModule } from './usuarios/usuarios.module';
     ContabilidadModule,
     LotesModule,
     ProductoresModule,
+    CampoModule,
   ],
 })
 export class AppModule {}

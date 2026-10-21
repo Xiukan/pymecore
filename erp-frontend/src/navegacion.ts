@@ -109,6 +109,33 @@ export const SECCIONES: Seccion[] = [
     ],
   },
   {
+    titulo: 'Campo',
+    pantallas: [
+      {
+        to: '/campo',
+        label: 'Mi campo',
+        descripcion: 'Predios y cuarteles, cuaderno de aplicaciones, cosecha y cuánto te cuesta producir cada kilo.',
+        ayuda: [
+          'Anota cada aplicación en el cuaderno de campo: el sistema no deja cosechar mientras dure la carencia.',
+          'Al cosechar, los kilos entran a bodega como lote con su costo.',
+          'En Costos compara lo gastado con lo presupuestado para la temporada.',
+        ],
+        roles: GESTION,
+      },
+      {
+        to: '/trabajadores',
+        label: 'Trabajadores de temporada',
+        descripcion: 'Jornadas, tratos, anticipos y pagos del personal de temporada y de contratistas.',
+        ayuda: [
+          'Anota cada día lo trabajado: por día o por kilos/cajas.',
+          'Al pagar, los anticipos se descuentan solos.',
+          'Revisa que los contratistas tengan su certificado F30-1 al día.',
+        ],
+        roles: GESTION,
+      },
+    ],
+  },
+  {
     titulo: 'Dinero',
     pantallas: [
       {

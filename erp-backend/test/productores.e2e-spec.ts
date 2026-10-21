@@ -3,7 +3,7 @@ import { abrirCaja, auth, CASA_MATRIZ, cerrar, Contexto, iniciar, PROVEEDOR_DEMO
 describe('compras a productores, anticipos y lotes', () => {
   let ctx: Contexto
   let cafe: string
-  const n = (v: string | number) => Number(v)
+  const n = (v: unknown) => Number(v)
   const hoy = (() => {
     const d = new Date()
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`

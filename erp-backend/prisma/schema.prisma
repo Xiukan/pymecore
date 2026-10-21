@@ -133,20 +133,22 @@ model Usuario {
   sucursalId     String?       @map("sucursal_id") @db.Uuid
   creadoEn       DateTime      @default(now()) @map("creado_en")
 
-  sucursal             Sucursal?              @relation(fields: [sucursalId], references: [id])
-  transacciones        Transaccion[]
-  gastosOperacionales  GastoOperacional[]
-  guiasDespacho        GuiaDespacho[]
-  operaciones          OperacionIdempotente[]
-  ajustesStock         AjusteStock[]
-  ordenesCompra        OrdenCompra[]
-  recepcionesCompra    RecepcionCompra[]
-  facturasCompra       FacturaCompra[]
-  dteRecibidos         DteRecibido[]
-  sesionesCaja         SesionCaja[]
-  abonos               AbonoCliente[]
-  recepcionesProductor RecepcionProductor[]
-  anticiposProductor   AnticipoProductor[]
+  sucursal                 Sucursal?                 @relation(fields: [sucursalId], references: [id])
+  transacciones            Transaccion[]
+  gastosOperacionales      GastoOperacional[]
+  guiasDespacho            GuiaDespacho[]
+  operaciones              OperacionIdempotente[]
+  ajustesStock             AjusteStock[]
+  ordenesCompra            OrdenCompra[]
+  recepcionesCompra        RecepcionCompra[]
+  facturasCompra           FacturaCompra[]
+  dteRecibidos             DteRecibido[]
+  sesionesCaja             SesionCaja[]
+  abonos                   AbonoCliente[]
+  recepcionesProductor     RecepcionProductor[]
+  anticiposProductor       AnticipoProductor[]
+  aplicacionFitosanitarias AplicacionFitosanitaria[]
+  cosechas                 Cosecha[]
 
   @@map("usuarios")
 }
@@ -163,6 +165,8 @@ model Entidad {
   // Venta a crédito: monto máximo adeudado y plazo de pago en días.
   cupoCredito       Decimal       @default(0) @map("cupo_credito") @db.Decimal(12, 2)
   diasCredito       Int           @default(30) @map("dias_credito")
+  // Contratista: vigencia del certificado de cumplimiento laboral (F30-1).
+  f30Vigencia       DateTime?     @map("f30_vigencia") @db.Date
   creadoEn          DateTime      @default(now()) @map("creado_en")
 
   transacciones        Transaccion[]
@@ -173,6 +177,7 @@ model Entidad {
   recepcionesProductor RecepcionProductor[]
   anticiposProductor   AnticipoProductor[]
   lotes                Lote[]
+  trabajadores         Trabajador[]
 
   @@map("entidades")
 }
@@ -194,13 +199,15 @@ model Item {
   estado          EstadoGeneral @default(Activo)
   creadoEn        DateTime      @default(now()) @map("creado_en")
 
-  stockLocal           StockLocal[]
-  detalles             TransaccionDetalle[]
-  ofertas              Oferta[]
-  detallesGuia         GuiaDespachoDetalle[]
-  detallesCompra       OrdenCompraDetalle[]
-  recepcionesProductor RecepcionProductor[]
-  lotes                Lote[]
+  stockLocal               StockLocal[]
+  detalles                 TransaccionDetalle[]
+  ofertas                  Oferta[]
+  detallesGuia             GuiaDespachoDetalle[]
+  detallesCompra           OrdenCompraDetalle[]
+  recepcionesProductor     RecepcionProductor[]
+  lotes                    Lote[]
+  aplicacionFitosanitarias AplicacionFitosanitaria[]
+  cosechas                 Cosecha[]
 
   @@map("items")
 }
@@ -353,9 +360,15 @@ model GastoOperacional {
   medioPago        MedioPago?            @map("medio_pago")
   estado           EstadoDocumentoCompra @default(VIGENTE)
   creadoEn         DateTime              @default(now()) @map("creado_en")
+  // Campo: gasto imputado a un cuartel y temporada para el costo por kilo.
+  cuartelId        String?               @map("cuartel_id") @db.Uuid
+  temporadaId      String?               @map("temporada_id") @db.Uuid
+  categoriaCosto   CategoriaCosto?       @map("categoria_costo")
 
   usuario   Usuario        @relation(fields: [usuarioId], references: [id])
   categoria CategoriaGasto @relation(fields: [categoriaId], references: [id])
+  cuartel   Cuartel?       @relation(fields: [cuartelId], references: [id])
+  temporada Temporada?     @relation(fields: [temporadaId], references: [id])
   sucursal  Sucursal?      @relation(fields: [sucursalId], references: [id])
   proveedor Entidad?       @relation(fields: [proveedorId], references: [id])
   dte       DteRecibido?
@@ -808,7 +821,9 @@ model Lote {
   item        Item                @relation(fields: [itemId], references: [id])
   sucursal    Sucursal            @relation(fields: [sucursalId], references: [id])
   productor   Entidad?            @relation(fields: [productorId], references: [id])
+  cuartel     Cuartel?            @relation(fields: [cuartelId], references: [id])
   recepcion   RecepcionProductor?
+  cosecha     Cosecha?
   movimientos MovimientoLote[]
 
   @@unique([codigo, sucursalId])
@@ -832,4 +847,218 @@ model MovimientoLote {
   @@index([transaccionId])
   @@index([guiaId])
   @@map("movimientos_lote")
+}
+
+enum CategoriaCosto {
+  INSUMOS
+  MANO_OBRA
+  MAQUINARIA
+  SERVICIOS
+  OTROS
+}
+
+enum TipoTrabajador {
+  PROPIO
+  CONTRATISTA
+}
+
+enum TipoLabor {
+  JORNADA
+  TRATO
+}
+
+model Predio {
+  id        String   @id @default(uuid()) @db.Uuid
+  nombre    String   @unique @db.VarChar(80)
+  comuna    String?  @db.VarChar(60)
+  hectareas Decimal  @default(0) @db.Decimal(10, 2)
+  activo    Boolean  @default(true)
+  creadoEn  DateTime @default(now()) @map("creado_en")
+
+  cuarteles Cuartel[]
+
+  @@map("predios")
+}
+
+// Unidad productiva dentro de un predio (un paño con un cultivo).
+model Cuartel {
+  id        String  @id @default(uuid()) @db.Uuid
+  predioId  String  @map("predio_id") @db.Uuid
+  nombre    String  @db.VarChar(80)
+  cultivo   String  @db.VarChar(60)
+  variedad  String? @db.VarChar(60)
+  hectareas Decimal @db.Decimal(10, 2)
+  activo    Boolean @default(true)
+
+  predio       Predio                    @relation(fields: [predioId], references: [id])
+  aplicaciones AplicacionFitosanitaria[]
+  cosechas     Cosecha[]
+  labores      Labor[]
+  gastos       GastoOperacional[]
+  presupuestos Presupuesto[]
+  lotes        Lote[]
+
+  @@unique([predioId, nombre])
+  @@map("cuarteles")
+}
+
+model Temporada {
+  id          String   @id @default(uuid()) @db.Uuid
+  nombre      String   @unique @db.VarChar(30)
+  fechaInicio DateTime @map("fecha_inicio") @db.Date
+  fechaFin    DateTime @map("fecha_fin") @db.Date
+
+  aplicaciones AplicacionFitosanitaria[]
+  cosechas     Cosecha[]
+  labores      Labor[]
+  gastos       GastoOperacional[]
+  presupuestos Presupuesto[]
+
+  @@map("temporadas")
+}
+
+// Cuaderno de campo: qué producto se aplicó, cuánto, dónde y cuándo se puede cosechar.
+model AplicacionFitosanitaria {
+  id             String                @id @default(uuid()) @db.Uuid
+  cuartelId      String                @map("cuartel_id") @db.Uuid
+  temporadaId    String                @map("temporada_id") @db.Uuid
+  itemId         String                @map("item_id") @db.Uuid
+  sucursalId     String                @map("sucursal_id") @db.Uuid
+  usuarioId      String                @map("usuario_id") @db.Uuid
+  fecha          DateTime              @db.Date
+  objetivo       String                @db.VarChar(120)
+  dosisPorHa     Decimal               @map("dosis_por_ha") @db.Decimal(12, 3)
+  cantidad       Decimal               @db.Decimal(12, 3)
+  carenciaDias   Int                   @map("carencia_dias")
+  reingresoHoras Int                   @default(0) @map("reingreso_horas")
+  aplicador      String                @db.VarChar(100)
+  metodo         String?               @db.VarChar(60)
+  costo          Decimal               @db.Decimal(12, 2)
+  estado         EstadoDocumentoCompra @default(VIGENTE)
+  creadoEn       DateTime              @default(now()) @map("creado_en")
+
+  cuartel   Cuartel   @relation(fields: [cuartelId], references: [id])
+  temporada Temporada @relation(fields: [temporadaId], references: [id])
+  item      Item      @relation(fields: [itemId], references: [id])
+  usuario   Usuario   @relation(fields: [usuarioId], references: [id])
+
+  @@index([cuartelId, fecha])
+  @@map("aplicaciones_fitosanitarias")
+}
+
+// Cosecha propia: entra a stock como lote del cuartel y se lleva el costo acumulado del
+// cuartel en la temporada (insumos, mano de obra y gastos imputados).
+model Cosecha {
+  id          String                @id @default(uuid()) @db.Uuid
+  cuartelId   String                @map("cuartel_id") @db.Uuid
+  temporadaId String                @map("temporada_id") @db.Uuid
+  itemId      String                @map("item_id") @db.Uuid
+  sucursalId  String                @map("sucursal_id") @db.Uuid
+  usuarioId   String                @map("usuario_id") @db.Uuid
+  fecha       DateTime              @default(now())
+  kilos       Decimal               @db.Decimal(12, 3)
+  costoKilo   Decimal               @map("costo_kilo") @db.Decimal(12, 2)
+  costoTotal  Decimal               @map("costo_total") @db.Decimal(12, 2)
+  loteId      String?               @unique @map("lote_id") @db.Uuid
+  estado      EstadoDocumentoCompra @default(VIGENTE)
+
+  cuartel   Cuartel   @relation(fields: [cuartelId], references: [id])
+  temporada Temporada @relation(fields: [temporadaId], references: [id])
+  item      Item      @relation(fields: [itemId], references: [id])
+  usuario   Usuario   @relation(fields: [usuarioId], references: [id])
+  lote      Lote?     @relation(fields: [loteId], references: [id])
+
+  @@map("cosechas")
+}
+
+model Presupuesto {
+  id          String         @id @default(uuid()) @db.Uuid
+  temporadaId String         @map("temporada_id") @db.Uuid
+  cuartelId   String         @map("cuartel_id") @db.Uuid
+  categoria   CategoriaCosto
+  monto       Decimal        @db.Decimal(14, 2)
+
+  temporada Temporada @relation(fields: [temporadaId], references: [id])
+  cuartel   Cuartel   @relation(fields: [cuartelId], references: [id])
+
+  @@unique([temporadaId, cuartelId, categoria])
+  @@map("presupuestos")
+}
+
+// Personal de temporada. Los de contratista pertenecen a una empresa (Entidad proveedor).
+model Trabajador {
+  id            String         @id @default(uuid()) @db.Uuid
+  rut           String         @unique @db.VarChar(12)
+  nombre        String         @db.VarChar(120)
+  tipo          TipoTrabajador @default(PROPIO)
+  contratistaId String?        @map("contratista_id") @db.Uuid
+  valorJornada  Decimal        @default(0) @map("valor_jornada") @db.Decimal(12, 2)
+  activo        Boolean        @default(true)
+  creadoEn      DateTime       @default(now()) @map("creado_en")
+
+  contratista   Entidad?                @relation(fields: [contratistaId], references: [id])
+  labores       Labor[]
+  anticipos     AnticipoTrabajador[]
+  liquidaciones LiquidacionTrabajador[]
+
+  @@map("trabajadores")
+}
+
+// Trabajo registrado: por día (jornada) o por unidad producida (trato: kilos, cajas...).
+model Labor {
+  id            String    @id @default(uuid()) @db.Uuid
+  trabajadorId  String    @map("trabajador_id") @db.Uuid
+  cuartelId     String?   @map("cuartel_id") @db.Uuid
+  temporadaId   String?   @map("temporada_id") @db.Uuid
+  fecha         DateTime  @db.Date
+  tipo          TipoLabor
+  descripcion   String    @db.VarChar(80)
+  cantidad      Decimal   @db.Decimal(12, 3)
+  unidad        String    @db.VarChar(10)
+  tarifa        Decimal   @db.Decimal(12, 2)
+  monto         Decimal   @db.Decimal(12, 2)
+  liquidacionId String?   @map("liquidacion_id") @db.Uuid
+  creadoEn      DateTime  @default(now()) @map("creado_en")
+
+  trabajador  Trabajador             @relation(fields: [trabajadorId], references: [id])
+  cuartel     Cuartel?               @relation(fields: [cuartelId], references: [id])
+  temporada   Temporada?             @relation(fields: [temporadaId], references: [id])
+  liquidacion LiquidacionTrabajador? @relation(fields: [liquidacionId], references: [id])
+
+  @@index([trabajadorId, fecha])
+  @@map("labores")
+}
+
+model AnticipoTrabajador {
+  id            String                @id @default(uuid()) @db.Uuid
+  trabajadorId  String                @map("trabajador_id") @db.Uuid
+  monto         Decimal               @db.Decimal(12, 2)
+  fecha         DateTime              @db.Date
+  medioPago     MedioPago             @map("medio_pago")
+  estado        EstadoDocumentoCompra @default(VIGENTE)
+  liquidacionId String?               @map("liquidacion_id") @db.Uuid
+
+  trabajador  Trabajador             @relation(fields: [trabajadorId], references: [id])
+  liquidacion LiquidacionTrabajador? @relation(fields: [liquidacionId], references: [id])
+
+  @@map("anticipos_trabajador")
+}
+
+// Pago de las labores pendientes de un trabajador, descontando sus anticipos.
+model LiquidacionTrabajador {
+  id           String    @id @default(uuid()) @db.Uuid
+  trabajadorId String    @map("trabajador_id") @db.Uuid
+  hasta        DateTime  @db.Date
+  totalLabores Decimal   @map("total_labores") @db.Decimal(12, 2)
+  anticipos    Decimal   @db.Decimal(12, 2)
+  aPagar       Decimal   @map("a_pagar") @db.Decimal(12, 2)
+  fechaPago    DateTime  @map("fecha_pago") @db.Date
+  medioPago    MedioPago @map("medio_pago")
+  creadoEn     DateTime  @default(now()) @map("creado_en")
+
+  trabajador          Trabajador           @relation(fields: [trabajadorId], references: [id])
+  labores             Labor[]
+  anticiposLiquidados AnticipoTrabajador[]
+
+  @@map("liquidaciones_trabajador")
 }

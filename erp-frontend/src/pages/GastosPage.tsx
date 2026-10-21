@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react'
+import { temporadaVigente } from '@/utils/campo'
 import { useAuth } from '@/context/AuthContext'
 import {
+  getPredios,
+  getTemporadas,
   anularGasto,
   createCategoriaGasto,
   createGasto,
@@ -12,7 +15,7 @@ import {
   updateCategoriaGasto,
 } from '@/api'
 import { useEmpresa } from '@/hooks/useEmpresa'
-import type { CategoriaGasto, Entidad, ListadoGastos, Sucursal, TipoDocumentoGasto } from '@/types'
+import type { CategoriaGasto, Entidad, ListadoGastos, Predio, Sucursal, Temporada, TipoDocumentoGasto } from '@/types'
 import { previaGasto } from '@/utils/gastos'
 
 const input = 'w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500'
@@ -45,6 +48,8 @@ const vacio = () => ({
   fechaVencimiento: '',
   pagado: true,
   medioPago: 'Efectivo',
+  cuartelId: '',
+  categoriaCosto: 'OTROS',
 })
 
 export default function GastosPage() {
@@ -62,6 +67,8 @@ export default function GastosPage() {
   const [verCategorias, setVerCategorias] = useState(false)
   const [error, setError] = useState('')
   const [enviando, setEnviando] = useState(false)
+  const [predios, setPredios] = useState<Predio[]>([])
+  const [temporadas, setTemporadas] = useState<Temporada[]>([])
 
   const cargar = () =>
     getGastos({
@@ -77,6 +84,8 @@ export default function GastosPage() {
   useEffect(() => {
     getCategoriasGasto().then((r) => setCategorias(r.data))
     getProveedores().then((r) => setProveedores(r.data))
+    getPredios().then((r) => setPredios(r.data)).catch(() => {})
+    getTemporadas().then((r) => setTemporadas(r.data)).catch(() => {})
     if (esAdmin) getSucursales().then((r) => setSucursales(r.data))
   }, [esAdmin])
 
@@ -103,6 +112,7 @@ export default function GastosPage() {
         fecha: form.fecha,
         fechaVencimiento: !form.pagado && form.fechaVencimiento ? form.fechaVencimiento : undefined,
         medioPago: form.pagado ? form.medioPago : undefined,
+        ...(form.cuartelId && { cuartelId: form.cuartelId, temporadaId: temporadaVigente(temporadas, form.fecha)?.id, categoriaCosto: form.categoriaCosto }),
       })
       setForm(null)
       cargar()
@@ -274,6 +284,28 @@ export default function GastosPage() {
               <button onClick={() => setForm(null)} className="text-gray-400 text-xl">×</button>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {predios.some((p) => p.cuarteles.length) && (
+                <div className="sm:col-span-2 grid grid-cols-2 gap-4">
+                  <label className="block text-xs text-gray-600">¿Es de un cuartel? (para el costo por kilo)
+                    <select value={form.cuartelId} onChange={(e) => setForm({ ...form, cuartelId: e.target.value })} className={input}>
+                      <option value="">No, es un gasto general</option>
+                      {predios.flatMap((p) => p.cuarteles.map((c) => <option key={c.id} value={c.id}>{p.nombre} · {c.nombre}</option>))}
+                    </select>
+                  </label>
+                  {form.cuartelId && (
+                    <label className="block text-xs text-gray-600">Tipo de costo
+                      <select value={form.categoriaCosto} onChange={(e) => setForm({ ...form, categoriaCosto: e.target.value })} className={input}>
+                        <option value="INSUMOS">Insumos</option>
+                        <option value="MANO_OBRA">Mano de obra</option>
+                        <option value="MAQUINARIA">Maquinaria</option>
+                        <option value="SERVICIOS">Servicios</option>
+                        <option value="OTROS">Otros</option>
+                      </select>
+                      {!temporadaVigente(temporadas, form.fecha) && <span className="text-amber-700">No hay temporada para esa fecha.</span>}
+                    </label>
+                  )}
+                </div>
+              )}
               <label className="block text-xs text-gray-600 sm:col-span-2">Descripción *
                 <input value={form.descripcion} maxLength={200} onChange={(e) => setForm({ ...form, descripcion: e.target.value })} className={input} placeholder="ej. Arriendo local octubre" />
               </label>

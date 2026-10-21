@@ -520,3 +520,121 @@ export interface CuentaProductor {
   anticipado: string
   saldo: string
 }
+
+export interface Cuartel {
+  id: string
+  predioId: string
+  nombre: string
+  cultivo: string
+  variedad: string | null
+  hectareas: string
+  activo: boolean
+}
+
+export interface Predio {
+  id: string
+  nombre: string
+  comuna: string | null
+  hectareas: string
+  activo: boolean
+  cuarteles: Cuartel[]
+}
+
+export interface Temporada {
+  id: string
+  nombre: string
+  fechaInicio: string
+  fechaFin: string
+}
+
+export interface AplicacionFitosanitaria {
+  id: string
+  fecha: string
+  objetivo: string
+  dosisPorHa: string
+  cantidad: string
+  carenciaDias: number
+  reingresoHoras: number
+  aplicador: string
+  metodo: string | null
+  costo: string
+  estado: 'VIGENTE' | 'ANULADO'
+  cuartel: { nombre: string; predio: { nombre: string } }
+  item: { nombre: string; unidadMedida: string }
+}
+
+export interface Carencia {
+  cuartel: { id: string; nombre: string; predio: { nombre: string } }
+  cosecharDesde: string
+  objetivo: string
+}
+
+export interface Cosecha {
+  id: string
+  fecha: string
+  kilos: string
+  costoKilo: string
+  costoTotal: string
+  estado: 'VIGENTE' | 'ANULADO'
+  cuartel: { nombre: string }
+  item?: { nombre: string }
+  lote: { codigo: string } | null
+}
+
+export type CategoriaCosto = 'INSUMOS' | 'MANO_OBRA' | 'MAQUINARIA' | 'SERVICIOS' | 'OTROS'
+
+export interface CostoCuartel {
+  id: string
+  nombre: string
+  predio: string
+  cultivo: string
+  hectareas: string
+  categorias: { categoria: CategoriaCosto; real: string; presupuesto: string }[]
+  real: string
+  presupuesto: string
+  desviacion: string
+  kilos: string
+  costoKilo: string | null
+  costoHa: string | null
+  rendimientoHa: string | null
+}
+
+export interface InformeCostosCampo {
+  temporada: Temporada
+  cuarteles: CostoCuartel[]
+}
+
+export interface Trabajador {
+  id: string
+  rut: string
+  nombre: string
+  tipo: 'PROPIO' | 'CONTRATISTA'
+  valorJornada: string
+  activo: boolean
+  contratista: { id: string; nombreRazonSocial: string; f30Vigencia: string | null } | null
+}
+
+export interface Labor {
+  id: string
+  fecha: string
+  tipo: 'JORNADA' | 'TRATO'
+  descripcion: string
+  cantidad: string
+  unidad: string
+  tarifa: string
+  monto: string
+  liquidacionId: string | null
+  trabajador: { nombre: string; rut: string }
+  cuartel: { nombre: string } | null
+}
+
+export interface LiquidacionTrabajador {
+  id: string
+  hasta: string
+  totalLabores: string
+  anticipos: string
+  aPagar: string
+  fechaPago: string
+  medioPago: string
+  trabajador: { nombre: string; rut: string; contratista?: { nombreRazonSocial: string } | null }
+}
