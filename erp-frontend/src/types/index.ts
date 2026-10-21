@@ -376,3 +376,68 @@ export interface PorPagar {
   porTramo: Tramos
   documentos: { tipo: 'FACTURA_COMPRA' | 'GASTO'; id: string; documento: string; proveedor: string; rut: string; vencimiento: string; saldo: string }[]
 }
+
+export interface CuentaContable {
+  codigo: string
+  nombre: string
+  tipo: 'ACTIVO' | 'PASIVO' | 'PATRIMONIO' | 'INGRESO' | 'GASTO'
+  activa: boolean
+}
+
+export interface LineaResultado {
+  codigo: string
+  nombre: string
+  monto: string
+}
+
+export interface EstadoResultados {
+  desde: string
+  hasta: string
+  ingresos: LineaResultado[]
+  costos: LineaResultado[]
+  gastos: LineaResultado[]
+  totalIngresos: string
+  totalCostos: string
+  margen: string
+  totalGastos: string
+  resultado: string
+}
+
+export interface FilaBalance {
+  codigo: string
+  nombre: string
+  debe: string
+  haber: string
+  deudor: string
+  acreedor: string
+  activo: string
+  pasivo: string
+  perdida: string
+  ganancia: string
+}
+
+export interface Balance {
+  desde: string
+  hasta: string
+  filas: FilaBalance[]
+  totales: Omit<FilaBalance, 'codigo' | 'nombre'>
+  resultado: string
+}
+
+export interface AsientoContable {
+  id: string
+  fecha: string
+  glosa: string
+  origenTipo: string
+  manual: boolean
+  lineas: { cuenta: string; nombre: string; debe: string; haber: string }[]
+}
+
+export interface LibroMayor {
+  cuenta: CuentaContable
+  desde: string
+  hasta: string
+  saldoInicial: string
+  saldoFinal: string
+  filas: { fecha: string; glosa: string; debe: string; haber: string; saldo: string }[]
+}

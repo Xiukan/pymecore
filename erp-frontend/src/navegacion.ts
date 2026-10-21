@@ -134,6 +134,17 @@ export const SECCIONES: Seccion[] = [
         roles: null,
       },
       {
+        to: '/contabilidad',
+        label: 'Contabilidad',
+        descripcion: 'Ganancias y pérdidas, balance y libros contables. Se llenan solos con lo que registras.',
+        ayuda: [
+          'Ganancias y pérdidas te dice si el negocio ganó plata en el período.',
+          'El contador encuentra aquí el balance de 8 columnas, el libro diario y el mayor.',
+          'Cierra cada mes cuando lo declares al SII para que nadie lo modifique.',
+        ],
+        roles: ADMIN,
+      },
+      {
         to: '/libros',
         label: 'Impuestos (IVA)',
         descripcion: 'Lo que debes declarar al SII cada mes.',

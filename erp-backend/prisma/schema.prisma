@@ -236,6 +236,7 @@ model Transaccion {
   sesionCaja        SesionCaja?          @relation(fields: [sesionCajaId], references: [id])
   abonos            AbonoCliente[]
   detalles          TransaccionDetalle[]
+  pagos             PagoTransaccion[]
 
   @@map("transacciones")
 }
@@ -355,6 +356,8 @@ model CategoriaGasto {
   nombre         String             @unique @db.VarChar(50)
   ivaRecuperable Boolean            @default(true) @map("iva_recuperable")
   activa         Boolean            @default(true)
+  cuentaCodigo   String             @default("5103") @map("cuenta_codigo") @db.VarChar(10)
+  cuenta         CuentaContable     @relation(fields: [cuentaCodigo], references: [codigo])
   gastos         GastoOperacional[]
 
   @@map("categorias_gasto")
@@ -614,4 +617,79 @@ model AbonoCliente {
 
   @@index([transaccionId])
   @@map("abonos_cliente")
+}
+
+enum TipoCuenta {
+  ACTIVO
+  PASIVO
+  PATRIMONIO
+  INGRESO
+  GASTO
+}
+
+// Plan de cuentas simple. Los asientos automáticos usan los códigos fijos del catálogo inicial.
+model CuentaContable {
+  codigo String     @id @db.VarChar(10)
+  nombre String     @db.VarChar(80)
+  tipo   TipoCuenta
+  activa Boolean    @default(true)
+
+  lineas     AsientoLinea[]
+  categorias CategoriaGasto[]
+
+  @@map("cuentas_contables")
+}
+
+// Asiento contable. Los automáticos se derivan de un documento (origen) y se regeneran
+// mientras el mes esté abierto; los manuales (origenTipo MANUAL) los registra el contador.
+model Asiento {
+  id         String   @id @default(uuid()) @db.Uuid
+  fecha      DateTime @db.Date
+  glosa      String   @db.VarChar(200)
+  origenTipo String   @map("origen_tipo") @db.VarChar(30)
+  origenId   String?  @map("origen_id") @db.VarChar(80)
+  creadoEn   DateTime @default(now()) @map("creado_en")
+
+  lineas AsientoLinea[]
+
+  @@unique([origenTipo, origenId])
+  @@index([fecha])
+  @@map("asientos")
+}
+
+model AsientoLinea {
+  id           String  @id @default(uuid()) @db.Uuid
+  asientoId    String  @map("asiento_id") @db.Uuid
+  cuentaCodigo String  @map("cuenta_codigo") @db.VarChar(10)
+  debe         Decimal @default(0) @db.Decimal(14, 2)
+  haber        Decimal @default(0) @db.Decimal(14, 2)
+
+  asiento Asiento        @relation(fields: [asientoId], references: [id], onDelete: Cascade)
+  cuenta  CuentaContable @relation(fields: [cuentaCodigo], references: [codigo])
+
+  @@index([cuentaCodigo])
+  @@map("asiento_lineas")
+}
+
+// Mes declarado: no se regeneran sus asientos ni se registran o anulan documentos con esa fecha.
+model PeriodoCerrado {
+  mes       String   @id @db.Char(7)
+  usuarioId String   @map("usuario_id") @db.Uuid
+  cerradoEn DateTime @default(now()) @map("cerrado_en")
+
+  @@map("periodos_cerrados")
+}
+
+// Partes del cobro de una venta pagada con más de un medio (p. ej. efectivo + tarjeta).
+// Si una venta no tiene filas aquí, se cobró completa con Transaccion.medioPago.
+model PagoTransaccion {
+  id            String    @id @default(uuid()) @db.Uuid
+  transaccionId String    @map("transaccion_id") @db.Uuid
+  medioPago     MedioPago @map("medio_pago")
+  monto         Decimal   @db.Decimal(12, 2)
+
+  transaccion Transaccion @relation(fields: [transaccionId], references: [id], onDelete: Cascade)
+
+  @@index([transaccionId])
+  @@map("pagos_transaccion")
 }

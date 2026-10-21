@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import { MedioPago, Prisma, TipoTransaccion } from '@prisma/client';
 import { esAdmin, exigirSucursal, sucursalDe, UsuarioSesion } from '../auth/sucursal-scope';
 import { PrismaService } from '../prisma/prisma.service';
+import { exigirPeriodoAbierto } from '../utils/periodos';
 import { TX_OPCIONES } from '../utils/transacciones';
 import { AbrirCajaDto, CerrarCajaDto } from './dto/caja.dto';
 
@@ -103,6 +104,7 @@ export class CajaService {
         exigirSucursal(user, sesion.sucursalId);
       }
       if (sesion.estado !== 'ABIERTA') throw new BadRequestException('La caja ya está cerrada.');
+      await exigirPeriodoAbierto(tx, new Date());
       const resumen = await this.calcular(tx, id, sesion.montoApertura);
       const esperado = new D(resumen.efectivoEsperado);
       return tx.sesionCaja.update({

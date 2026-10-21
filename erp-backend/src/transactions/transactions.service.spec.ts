@@ -64,6 +64,7 @@ describe('TransactionsService', () => {
       operacionIdempotente: { create: jest.fn(), update: jest.fn() },
     }
     prisma = {
+      periodoCerrado: { findUnique: jest.fn().mockResolvedValue(null) },
       item: { findMany: jest.fn().mockResolvedValue([ITEM_MOCK]) },
       transaccion: { update: jest.fn(), findUniqueOrThrow: jest.fn() },
       operacionIdempotente: { findUnique: jest.fn().mockResolvedValue(null) },

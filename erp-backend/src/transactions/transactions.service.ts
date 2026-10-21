@@ -14,6 +14,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { EmpresaService } from '../empresa/empresa.service';
 import { SiiIntegrationService } from '../sii/sii-integration.service';
 import { reclamarFolio } from '../utils/folios.util';
+import { exigirPeriodoAbierto } from '../utils/periodos';
 import { TX_OPCIONES } from '../utils/transacciones';
 import { calcularDocumento, dec, peso, share, ZERO } from '../utils/money.util';
 import { CreateTransactionDto } from './dto/create-transaction.dto';
@@ -138,6 +139,7 @@ export class TransactionsService {
     }
     const itemMap = new Map(items.map((i) => [i.id, i]));
     const empresa = await this.empresa.get();
+    await exigirPeriodoAbierto(this.prisma, new Date());
 
     const transaccion = await this.prisma.$transaction(async (tx) => {
       // La reserva va primero: una segunda petición con la misma clave espera aquí y luego falla por unicidad.

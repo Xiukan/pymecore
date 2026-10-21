@@ -4,6 +4,7 @@ import { esAdmin, exigirSucursal, sucursalDe, UsuarioSesion } from '../auth/sucu
 import { normalizarRut } from '../compras/dte-recibido';
 import { EmpresaService } from '../empresa/empresa.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { exigirPeriodoAbierto } from '../utils/periodos';
 import { TX_OPCIONES } from '../utils/transacciones';
 import { peso, ZERO } from '../utils/money.util';
 import { CategoriaGastoDto, CreateGastoDto, PagarGastoDto } from './dto/gastos.dto';
@@ -83,6 +84,7 @@ export class GastosService {
     if (dto.fechaVencimiento && new Date(dto.fechaVencimiento) < fecha) {
       throw new BadRequestException('El vencimiento no puede ser anterior a la fecha del gasto.');
     }
+    await exigirPeriodoAbierto(this.prisma, dto.fecha);
 
     return this.prisma.$transaction(async (tx) => {
       const numero = dto.numeroDocumento?.trim() || null;
@@ -174,6 +176,7 @@ export class GastosService {
 
   async pagar(id: string, dto: PagarGastoDto, user: UsuarioSesion) {
     const gasto = await this.obtener(id, user);
+    await exigirPeriodoAbierto(this.prisma, dto.fechaPago ?? new Date());
     const { count } = await this.prisma.gastoOperacional.updateMany({
       where: { id: gasto.id, estado: 'VIGENTE', estadoPago: 'POR_PAGAR' },
       data: {
@@ -189,6 +192,8 @@ export class GastosService {
   async anular(id: string, user: UsuarioSesion) {
     const gasto = await this.obtener(id, user);
     return this.prisma.$transaction(async (tx) => {
+      await exigirPeriodoAbierto(tx, gasto.fechaRegistro, true);
+      if (gasto.fechaPago) await exigirPeriodoAbierto(tx, gasto.fechaPago, true);
       const { count } = await tx.gastoOperacional.updateMany({
         where: { id: gasto.id, estado: 'VIGENTE' },
         data: { estado: 'ANULADO' },

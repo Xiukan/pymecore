@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { CajaService } from '../caja/caja.service';
 import { exigirSucursal, sucursalDe, UsuarioSesion } from '../auth/sucursal-scope';
 import { PrismaService } from '../prisma/prisma.service';
+import { exigirPeriodoAbierto } from '../utils/periodos';
 import { TX_OPCIONES } from '../utils/transacciones';
 import { sumarDias, sumarPorTramo } from './antiguedad';
 import { AbonoDto, PagoProveedorDto } from './dto/cuentas.dto';
@@ -90,6 +91,7 @@ export class CuentasService {
 
   async abonar(dto: AbonoDto, user: UsuarioSesion) {
     return this.prisma.$transaction(async (tx) => {
+      await exigirPeriodoAbierto(tx, new Date());
       // Bloquea la venta: dos abonos simultáneos no pueden superar el saldo.
       await tx.$queryRaw`SELECT id FROM transacciones WHERE id = ${dto.transaccionId}::uuid FOR UPDATE`;
       const venta = await tx.transaccion.findUnique({ where: { id: dto.transaccionId } });
@@ -117,6 +119,7 @@ export class CuentasService {
     if (abono.sesionCaja && abono.sesionCaja.estado === 'CERRADA') {
       throw new BadRequestException('El abono en efectivo pertenece a una caja ya cerrada; regístrelo como ajuste.');
     }
+    await exigirPeriodoAbierto(this.prisma, abono.fecha);
     const { count } = await this.prisma.abonoCliente.updateMany({ where: { id, estado: 'VIGENTE' }, data: { estado: 'ANULADO' } });
     if (count !== 1) throw new BadRequestException('El abono ya está anulado.');
     return this.prisma.abonoCliente.findUniqueOrThrow({ where: { id } });
@@ -159,6 +162,7 @@ export class CuentasService {
   }
 
   async pagarFacturaCompra(id: string, dto: PagoProveedorDto) {
+    await exigirPeriodoAbierto(this.prisma, dto.fechaPago ?? new Date());
     const { count } = await this.prisma.facturaCompra.updateMany({
       where: { id, estado: 'VIGENTE', estadoPago: 'POR_PAGAR' },
       data: { estadoPago: 'PAGADO', medioPago: dto.medioPago, fechaPago: dto.fechaPago ? new Date(dto.fechaPago) : new Date() },

@@ -1,5 +1,5 @@
 import { api } from './client'
-import type { CategoriaGasto, Libro, PorCobrar, PorPagar, ResumenIva, SesionCaja, DashboardReporte, DteRecibido, Gasto, ListadoGastos, Empresa, Entidad, OrdenCompra, UnidadMedida, GuiaDespacho, Item, Oferta, StockLocal, Sucursal, Transaccion, Usuario } from '@/types'
+import type { AsientoContable, Balance, CuentaContable, EstadoResultados, LibroMayor, CategoriaGasto, Libro, PorCobrar, PorPagar, ResumenIva, SesionCaja, DashboardReporte, DteRecibido, Gasto, ListadoGastos, Empresa, Entidad, OrdenCompra, UnidadMedida, GuiaDespacho, Item, Oferta, StockLocal, Sucursal, Transaccion, Usuario } from '@/types'
 
 // Auth
 export const login = (username: string, password: string) =>
@@ -300,3 +300,18 @@ export const getPorPagar = () => api.get<PorPagar>('/cuentas/por-pagar')
 
 export const pagarFacturaCompra = (id: string, medioPago: string) =>
   api.patch(`/cuentas/facturas-compra/${id}/pagar`, { medioPago })
+
+// Contabilidad
+export const getResultados = (params: { desde?: string; hasta?: string }) =>
+  api.get<EstadoResultados>('/contabilidad/resultados', { params })
+export const getBalance = (params: { desde?: string; hasta?: string }) => api.get<Balance>('/contabilidad/balance', { params })
+export const getDiario = (mes: string) => api.get<{ mes: string; asientos: AsientoContable[] }>('/contabilidad/diario', { params: { mes } })
+export const getMayor = (cuenta: string, params: { desde?: string; hasta?: string }) =>
+  api.get<LibroMayor>(`/contabilidad/mayor/${cuenta}`, { params })
+export const getCuentasContables = () => api.get<CuentaContable[]>('/contabilidad/cuentas')
+export const crearAsientoManual = (data: { fecha: string; glosa: string; lineas: { cuenta: string; debe?: number; haber?: number }[] }) =>
+  api.post('/contabilidad/asientos', data)
+export const eliminarAsientoManual = (id: string) => api.delete(`/contabilidad/asientos/${id}`)
+export const getPeriodosCerrados = () => api.get<{ mes: string; cerradoEn: string }[]>('/contabilidad/periodos')
+export const cerrarPeriodo = (mes: string) => api.post(`/contabilidad/periodos/${mes}/cerrar`, {})
+export const reabrirPeriodo = (mes: string) => api.delete(`/contabilidad/periodos/${mes}`)

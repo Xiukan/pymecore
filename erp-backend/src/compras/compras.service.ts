@@ -3,6 +3,7 @@ import { EstadoOrdenCompra, Prisma } from '@prisma/client';
 import { esAdmin, exigirSucursal, sucursalDe, UsuarioSesion } from '../auth/sucursal-scope';
 import { EmpresaService } from '../empresa/empresa.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { exigirPeriodoAbierto } from '../utils/periodos';
 import { TX_OPCIONES } from '../utils/transacciones';
 import { calcularDocumentoNeto, dec, ZERO } from '../utils/money.util';
 import { DteRecibidosService } from './dte-recibidos.service';
@@ -156,6 +157,7 @@ export class ComprasService {
 
   async recibir(ordenId: string, dto: CreateRecepcionDto, user: UsuarioSesion) {
     return this.prisma.$transaction(async (tx) => {
+      await exigirPeriodoAbierto(tx, new Date());
       const orden = await this.bloquearOrden(tx, ordenId, user);
       if (orden.estado !== 'ABIERTA') throw new BadRequestException('Solo se recibe contra una orden abierta.');
       const lineas = this.lineasDeOrden(orden, dto.detalles);
@@ -202,6 +204,7 @@ export class ComprasService {
         include: { detalles: true },
       });
       if (recepcion.estado !== 'VIGENTE') throw new BadRequestException('La recepción ya está anulada.');
+      await exigirPeriodoAbierto(tx, recepcion.fecha);
       const avance = await this.avance(tx, orden.detalles.map((d) => d.id));
 
       for (const linea of recepcion.detalles) {
@@ -238,6 +241,7 @@ export class ComprasService {
     }
     const folio = dto.folio.trim();
     const { tasaIva } = await this.empresa.get();
+    await exigirPeriodoAbierto(this.prisma, dto.fechaEmision);
 
     return this.prisma.$transaction(async (tx) => {
       const orden = await this.bloquearOrden(tx, ordenId, user);
@@ -325,9 +329,14 @@ export class ComprasService {
   }
 
   async anularFactura(facturaId: string, user: UsuarioSesion) {
-    const ref = await this.prisma.facturaCompra.findUnique({ where: { id: facturaId }, select: { ordenId: true } });
+    const ref = await this.prisma.facturaCompra.findUnique({
+      where: { id: facturaId },
+      select: { ordenId: true, fechaEmision: true, fechaPago: true },
+    });
     if (!ref) throw new NotFoundException('Factura no encontrada');
     return this.prisma.$transaction(async (tx) => {
+      await exigirPeriodoAbierto(tx, ref.fechaEmision, true);
+      if (ref.fechaPago) await exigirPeriodoAbierto(tx, ref.fechaPago, true);
       await this.bloquearOrden(tx, ref.ordenId, user);
       const { count } = await tx.facturaCompra.updateMany({
         where: { id: facturaId, estado: 'VIGENTE' },
