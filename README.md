@@ -142,14 +142,24 @@ Abre el navegador en `http://localhost:5173`.
 
 | Módulo | Qué hace |
 |---|---|
-| Ventas POS | Precio fijado por el servidor, IVA incluido, caja obligatoria, efectivo/tarjeta/transferencia/crédito, boleta o factura con folio del pool y DTE firmado. |
+| Ventas POS | Precio fijado por el servidor (oferta o lista del cliente, el menor), IVA incluido, caja obligatoria, efectivo/tarjeta/transferencia/crédito o dos medios, venta por peso, boleta o factura con folio del pool y DTE firmado. |
+| Cotizaciones y pedidos | Cotización imprimible con los precios del cliente → pedido aceptado → venta. |
 | Cajas | Apertura con fondo, arqueo (efectivo esperado vs contado) e informe Z por medio de pago. |
 | Devoluciones | Contra la venta de origen, sin superar lo vendido; un vendedor no devuelve su propia venta. |
 | Compras | Orden de compra → recepción (stock y costo promedio ponderado) → factura del proveedor; bandeja de DTE recibidos con verificación de timbre y firma. |
 | Gastos | Gastos generales por categoría, con respaldo, IVA recuperable o no, retención de honorarios, vencimiento y pago. |
 | Cuentas | Por cobrar (ventas a crédito con cupo, abonos y antigüedad) y por pagar (facturas de compra y gastos). |
-| Libros e IVA | Libro de ventas, libro de compras y resumen mensual tipo F29, con descarga CSV. |
+| Impuestos (IVA) | Libro de ventas, libro de compras y resumen mensual tipo F29 (incluye IVA retenido a productores), descarga CSV y cuadratura con el RCV del SII. |
 | Dashboard | Ventas, margen, gastos y resultado del período. |
+| Contabilidad | Asientos automáticos desde cada documento, estado de resultados, balance de 8 columnas, libros diario y mayor, asientos manuales y cierre de mes (bloquea documentos del mes cerrado). |
+| Bancos y flujo de caja | Cuentas bancarias, importación de cartola CSV y conciliación con sugerencias, flujo de caja proyectado por semana y activos fijos con depreciación lineal. |
+| Compras a productores | Recepción con pesaje (bruto/tara), castigo por humedad e impurezas, factura de compra (DTE 46, retención total del IVA) o cambio de sujeto parcial, anticipos descontados al pagar. |
+| Lotes | Lote por recepción o cosecha, con vencimiento; salidas FEFO en ventas, mermas y guías; trazabilidad del productor al cliente. |
+| Campo | Predios, cuarteles y temporadas; cuaderno de campo con carencias que bloquean la cosecha; cosecha a stock con el costo del cuartel; costo por hectárea y por kilo frente al presupuesto. |
+| Trabajadores de temporada | Jornadas y tratos, anticipos, liquidación de lo pendiente y control del certificado F30-1 de contratistas (no calcula cotizaciones: exporta CSV para remuneraciones). |
+| Inventario | Conteo físico guiado (faltantes y sobrantes contabilizados) y sugerencia de compra según venta de 30 días. |
+
+Cada empresa elige en **Datos de la empresa** qué módulos opcionales ve en el menú (cotizaciones, contabilidad, bancos, productores, campo, varios locales).
 
 ---
 
