@@ -638,3 +638,53 @@ export interface LiquidacionTrabajador {
   medioPago: string
   trabajador: { nombre: string; rut: string; contratista?: { nombreRazonSocial: string } | null }
 }
+
+export interface CuentaBancaria {
+  id: string
+  banco: string
+  numero: string
+  alias: string | null
+  saldoInicial: string
+  fechaSaldoInicial: string
+  saldoCartola: string
+  porConciliar: number
+}
+
+export interface MovimientoBancario {
+  id: string
+  fecha: string
+  descripcion: string
+  monto: string
+  conciliadoTipo: string | null
+  cuentaCodigo: string | null
+  cuenta: { nombre: string } | null
+}
+
+export interface CandidatoConciliacion {
+  tipo: string
+  id: string
+  fecha: string
+  monto: number
+  detalle: string
+}
+
+export interface FlujoCaja {
+  saldoInicial: number
+  alerta: string | null
+  semanas: { desde: string; hasta: string; entradas: number; salidas: number; saldo: number; detalle: { fecha: string; monto: number; tipo: string; detalle: string }[] }[]
+}
+
+export interface ActivoFijo {
+  id: string
+  nombre: string
+  categoria: string
+  fechaCompra: string
+  valorCompra: string
+  valorResidual: string
+  vidaUtilMeses: number
+  estado: 'ACTIVO' | 'BAJA'
+  fechaBaja: string | null
+  acumulada: string
+  valorLibro: string
+  cuotaMensual: string
+}

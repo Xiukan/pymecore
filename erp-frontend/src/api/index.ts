@@ -1,5 +1,5 @@
 import { api } from './client'
-import type { AplicacionFitosanitaria, Carencia, Cosecha, Cuartel, InformeCostosCampo, Labor, LiquidacionTrabajador, Predio, Temporada, Trabajador, AnticipoProductor, CuentaProductor, Lote, RecepcionProductor, TrazabilidadLote, AsientoContable, Balance, CuentaContable, EstadoResultados, LibroMayor, CategoriaGasto, Libro, PorCobrar, PorPagar, ResumenIva, SesionCaja, DashboardReporte, DteRecibido, Gasto, ListadoGastos, Empresa, Entidad, OrdenCompra, UnidadMedida, GuiaDespacho, Item, Oferta, StockLocal, Sucursal, Transaccion, Usuario } from '@/types'
+import type { ActivoFijo, CandidatoConciliacion, CuentaBancaria, FlujoCaja, MovimientoBancario, AplicacionFitosanitaria, Carencia, Cosecha, Cuartel, InformeCostosCampo, Labor, LiquidacionTrabajador, Predio, Temporada, Trabajador, AnticipoProductor, CuentaProductor, Lote, RecepcionProductor, TrazabilidadLote, AsientoContable, Balance, CuentaContable, EstadoResultados, LibroMayor, CategoriaGasto, Libro, PorCobrar, PorPagar, ResumenIva, SesionCaja, DashboardReporte, DteRecibido, Gasto, ListadoGastos, Empresa, Entidad, OrdenCompra, UnidadMedida, GuiaDespacho, Item, Oferta, StockLocal, Sucursal, Transaccion, Usuario } from '@/types'
 
 // Auth
 export const login = (username: string, password: string) =>
@@ -408,3 +408,29 @@ export const getLiquidaciones = (params: { desde?: string; hasta?: string } = {}
   api.get<LiquidacionTrabajador[]>('/campo/liquidaciones', { params })
 export const getAlertasContratistas = () => api.get<{ id: string; rut: string; nombreRazonSocial: string; f30Vigencia: string | null }[]>('/campo/contratistas/alertas')
 export const actualizarF30 = (id: string, f30Vigencia: string | null) => api.patch(`/campo/contratistas/${id}/f30`, { f30Vigencia })
+
+// Finanzas
+export const getBancos = () => api.get<CuentaBancaria[]>('/finanzas/bancos')
+export const crearBanco = (data: { banco: string; numero: string; alias?: string; saldoInicial?: number; fechaSaldoInicial: string }) =>
+  api.post<CuentaBancaria>('/finanzas/bancos', data)
+export const importarCartola = (id: string, contenido: string) =>
+  api.post<{ leidos: number; nuevos: number; repetidos: number }>(`/finanzas/bancos/${id}/cartola`, { contenido })
+export const getMovimientosBanco = (id: string, pendientes = false) =>
+  api.get<MovimientoBancario[]>(`/finanzas/bancos/${id}/movimientos`, { params: { pendientes } })
+export const getSugerencias = (id: string) => api.get<CandidatoConciliacion[]>(`/finanzas/movimientos/${id}/sugerencias`)
+export const conciliar = (id: string, data: { tipo?: string; id?: string; cuentaCodigo?: string }) =>
+  api.post(`/finanzas/movimientos/${id}/conciliar`, data)
+export const desconciliar = (id: string) => api.delete(`/finanzas/movimientos/${id}/conciliacion`)
+export const getFlujo = (semanas = 12) => api.get<FlujoCaja>('/finanzas/flujo', { params: { semanas } })
+export const getActivos = () => api.get<ActivoFijo[]>('/finanzas/activos')
+export const crearActivo = (data: {
+  nombre: string
+  categoria: string
+  fechaCompra: string
+  valorCompra: number
+  ivaCredito?: number
+  valorResidual?: number
+  vidaUtilMeses: number
+  medioPago?: string
+}) => api.post<ActivoFijo>('/finanzas/activos', data)
+export const bajaActivo = (id: string, fecha: string) => api.patch(`/finanzas/activos/${id}/baja`, { fecha })

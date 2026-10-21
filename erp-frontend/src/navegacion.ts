@@ -146,6 +146,17 @@ export const SECCIONES: Seccion[] = [
         roles: GESTION,
       },
       {
+        to: '/finanzas',
+        label: 'Bancos y flujo de caja',
+        descripcion: 'Cuánta plata tendrás las próximas semanas, conciliación de la cartola del banco y activos fijos.',
+        ayuda: [
+          'En "¿Me alcanza la plata?" ves semana a semana lo que vas a cobrar y pagar.',
+          'Sube la cartola del banco en CSV y marca a qué corresponde cada movimiento.',
+          'Registra tractores, bodegas y equipos: la depreciación se calcula sola.',
+        ],
+        roles: ADMIN,
+      },
+      {
         to: '/cuentas',
         label: 'Me deben y debo',
         descripcion: 'Clientes que te compraron fiado y facturas de proveedores por pagar.',

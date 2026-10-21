@@ -660,8 +660,9 @@ model CuentaContable {
   tipo   TipoCuenta
   activa Boolean    @default(true)
 
-  lineas     AsientoLinea[]
-  categorias CategoriaGasto[]
+  lineas               AsientoLinea[]
+  categorias           CategoriaGasto[]
+  movimientosBancarios MovimientoBancario[]
 
   @@map("cuentas_contables")
 }
@@ -1061,4 +1062,66 @@ model LiquidacionTrabajador {
   anticiposLiquidados AnticipoTrabajador[]
 
   @@map("liquidaciones_trabajador")
+}
+
+model CuentaBancaria {
+  id                String   @id @default(uuid()) @db.Uuid
+  banco             String   @db.VarChar(60)
+  numero            String   @db.VarChar(30)
+  alias             String?  @db.VarChar(60)
+  saldoInicial      Decimal  @default(0) @map("saldo_inicial") @db.Decimal(14, 2)
+  fechaSaldoInicial DateTime @map("fecha_saldo_inicial") @db.Date
+  activa            Boolean  @default(true)
+
+  movimientos MovimientoBancario[]
+
+  @@unique([banco, numero])
+  @@map("cuentas_bancarias")
+}
+
+// Línea de la cartola. Al conciliarla se liga al documento que la explica (pago, abono,
+// depósito de tarjetas) o a una cuenta contable (comisiones, intereses, aportes).
+model MovimientoBancario {
+  id               String    @id @default(uuid()) @db.Uuid
+  cuentaBancariaId String    @map("cuenta_bancaria_id") @db.Uuid
+  fecha            DateTime  @db.Date
+  descripcion      String    @db.VarChar(200)
+  monto            Decimal   @db.Decimal(14, 2)
+  huella           String    @db.Char(64)
+  conciliadoTipo   String?   @map("conciliado_tipo") @db.VarChar(30)
+  conciliadoId     String?   @map("conciliado_id") @db.VarChar(80)
+  cuentaCodigo     String?   @map("cuenta_codigo") @db.VarChar(10)
+  conciliadoEn     DateTime? @map("conciliado_en")
+  creadoEn         DateTime  @default(now()) @map("creado_en")
+
+  cuentaBancaria CuentaBancaria  @relation(fields: [cuentaBancariaId], references: [id])
+  cuenta         CuentaContable? @relation(fields: [cuentaCodigo], references: [codigo])
+
+  @@unique([cuentaBancariaId, huella])
+  @@unique([conciliadoTipo, conciliadoId])
+  @@index([cuentaBancariaId, fecha])
+  @@map("movimientos_bancarios")
+}
+
+enum EstadoActivo {
+  ACTIVO
+  BAJA
+}
+
+// Bien de uso (tractor, bodega, equipo). Se deprecia en línea recta mes a mes.
+model ActivoFijo {
+  id            String       @id @default(uuid()) @db.Uuid
+  nombre        String       @db.VarChar(120)
+  categoria     String       @db.VarChar(60)
+  fechaCompra   DateTime     @map("fecha_compra") @db.Date
+  valorCompra   Decimal      @map("valor_compra") @db.Decimal(14, 2)
+  ivaCredito    Decimal      @default(0) @map("iva_credito") @db.Decimal(14, 2)
+  valorResidual Decimal      @default(0) @map("valor_residual") @db.Decimal(14, 2)
+  vidaUtilMeses Int          @map("vida_util_meses")
+  medioPago     MedioPago?   @map("medio_pago")
+  estado        EstadoActivo @default(ACTIVO)
+  fechaBaja     DateTime?    @map("fecha_baja") @db.Date
+  creadoEn      DateTime     @default(now()) @map("creado_en")
+
+  @@map("activos_fijos")
 }

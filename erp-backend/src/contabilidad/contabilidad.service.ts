@@ -187,6 +187,15 @@ export class ContabilidadService {
 
   private hoy = () => fechaLocal(new Date());
 
+  /** Saldo deudor acumulado de las cuentas hasta la fecha (incluida), con la contabilidad al día. */
+  async saldo(codigos: string[], hasta: string) {
+    await this.ponerAlDia(hasta);
+    const [r] = await this.prisma.$queryRaw<{ saldo: Prisma.Decimal | null }[]>`
+      SELECT SUM(l.debe - l.haber) AS saldo FROM asiento_lineas l JOIN asientos a ON a.id = l.asiento_id
+      WHERE l.cuenta_codigo = ANY(${codigos}) AND a.fecha <= ${hasta}::date`;
+    return dec(r?.saldo ?? 0);
+  }
+
   async cuentas() {
     return this.prisma.cuentaContable.findMany({ orderBy: { codigo: 'asc' } });
   }

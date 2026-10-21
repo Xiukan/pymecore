@@ -5,5 +5,6 @@ import { TributarioService } from './tributario.service';
 @Module({
   controllers: [TributarioController],
   providers: [TributarioService],
+  exports: [TributarioService],
 })
 export class TributarioModule {}
