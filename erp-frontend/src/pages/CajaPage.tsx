@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
-import { getSesionesCaja } from '@/api'
-import { ResumenTabla } from '@/components/CajaPos'
+import { getSesionesCaja, getSucursales } from '@/api'
+import CajaPos, { ResumenTabla } from '@/components/CajaPos'
+import { useAuth } from '@/context/AuthContext'
 import type { SesionCaja } from '@/types'
 
 const clp = (v: string | number | null) => {
@@ -14,17 +15,25 @@ export default function CajaPage() {
   const [sesiones, setSesiones] = useState<SesionCaja[]>([])
   const [abierta, setAbierta] = useState<SesionCaja | null>(null)
   const [error, setError] = useState('')
+  const { user } = useAuth()
+  const [sucursalId, setSucursalId] = useState(user?.sucursalId ?? '')
+
+  const cargarSesiones = () =>
+    getSesionesCaja().then((r) => setSesiones(r.data)).catch(() => setError('No se pudo cargar el historial de cajas.'))
 
   useEffect(() => {
-    getSesionesCaja().then((r) => setSesiones(r.data)).catch(() => setError('No se pudo cargar el historial de cajas.'))
-  }, [])
+    cargarSesiones()
+    if (!user?.sucursalId) getSucursales().then((r) => r.data[0] && setSucursalId(r.data[0].id))
+  }, [user?.sucursalId])
 
   const descuadres = sesiones.filter((s) => s.estado === 'CERRADA' && Number(s.diferencia) !== 0)
 
   return (
     <div className="space-y-6">
       <h1 className="text-xl font-semibold text-gray-900">Caja</h1>
+      {sucursalId && <CajaPos sucursalId={sucursalId} version={0} onCambio={() => cargarSesiones()} />}
       {error && <p className="text-sm text-red-600">{error}</p>}
+      <h2 className="text-base font-semibold text-gray-800">Cajas anteriores</h2>
       {descuadres.length > 0 && (
         <p className="text-sm bg-amber-50 text-amber-800 rounded-lg px-3 py-2">
           {descuadres.length} cierre(s) con diferencia en el período mostrado, por un neto de {clp(descuadres.reduce((s, c) => s + Number(c.diferencia), 0))}.
