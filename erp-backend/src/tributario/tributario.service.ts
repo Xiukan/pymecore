@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { EmpresaService } from '../empresa/empresa.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { FilaLibro, resumenIva, totalesPorTipo } from './libros';
+import { cuadrarRcv, leerRcv } from './rcv';
 
 const D = Prisma.Decimal;
 const cero = () => new D(0);
@@ -169,5 +170,18 @@ export class TributarioService {
     ]);
     const retencionIva = compras.filas.reduce((s, f) => s.add(f.retencionIva ?? 0), cero());
     return { mes, ...resumenIva(ventas.filas, compras.filas, honorarios._sum.retencion ?? 0, retencionIva) };
+  }
+
+  /** Cuadra el Registro de Compras del SII del mes con el libro de compras del sistema. */
+  async cuadrarRcv(mes: string, contenido: string) {
+    const rcv = leerRcv(contenido);
+    const libro = await this.libroCompras(mes);
+    return {
+      mes,
+      ...cuadrarRcv(
+        rcv,
+        libro.filas.map((f) => ({ tipoDte: f.tipoDte, rut: f.rut, razonSocial: f.razonSocial, folio: f.folio, fecha: f.fecha, neto: Number(f.neto), iva: Number(f.iva), total: Number(f.total) })),
+      ),
+    };
   }
 }

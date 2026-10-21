@@ -6,6 +6,10 @@ export interface Pantalla {
   descripcion: string
   ayuda: string[]
   roles: Rol[] | null
+  /** Se muestra si la empresa tiene activo alguno de estos módulos (sin valor: siempre). */
+  modulos?: string[]
+  /** Tiene ayuda pero no aparece en el menú (se llega desde otra pantalla). */
+  oculta?: boolean
 }
 
 export interface Seccion {
@@ -33,6 +37,7 @@ export const SECCIONES: Seccion[] = [
         descripcion: 'Prepara cotizaciones para clientes, imprímelas y conviértelas en venta cuando las acepten.',
         ayuda: ['Crea la cotización con el cliente y los productos: se usan sus precios.', 'Cuando el cliente acepte, márcala y luego "Vender" emite la factura.'],
         roles: null,
+        modulos: ['pedidos'],
       },
       {
         to: '/caja',
@@ -84,6 +89,7 @@ export const SECCIONES: Seccion[] = [
           'Los anticipos que le diste se descuentan solos al pagarle.',
         ],
         roles: GESTION,
+        modulos: ['productores'],
       },
       {
         to: '/lotes',
@@ -91,6 +97,15 @@ export const SECCIONES: Seccion[] = [
         descripcion: 'De dónde vino cada partida, cuándo vence y a qué clientes se vendió.',
         ayuda: ['Los lotes en rojo ya vencieron; en naranjo vencen en menos de 30 días.', 'Toca un lote para ver su recorrido completo.'],
         roles: null,
+        modulos: ['productores', 'campo'],
+      },
+      {
+        to: '/conteo',
+        label: 'Conteo físico',
+        descripcion: 'Cuenta lo que hay en bodega y el sistema corrige el stock, registrando faltantes y sobrantes.',
+        ayuda: ['Anota lo que contaste de cada producto (deja vacío lo que no contaste).', 'Revisa las diferencias y presiona Aplicar.'],
+        roles: GESTION,
+        oculta: true,
       },
       {
         to: '/precios',
@@ -112,6 +127,7 @@ export const SECCIONES: Seccion[] = [
         descripcion: 'Envía mercadería de un local a otro con su guía de despacho.',
         ayuda: ['Crea la guía en el local que envía.', 'El local que recibe la marca como recibida.'],
         roles: GESTION,
+        modulos: ['despachos'],
       },
     ],
   },
@@ -128,6 +144,7 @@ export const SECCIONES: Seccion[] = [
           'En Costos compara lo gastado con lo presupuestado para la temporada.',
         ],
         roles: GESTION,
+        modulos: ['campo'],
       },
       {
         to: '/trabajadores',
@@ -139,6 +156,7 @@ export const SECCIONES: Seccion[] = [
           'Revisa que los contratistas tengan su certificado F30-1 al día.',
         ],
         roles: GESTION,
+        modulos: ['campo'],
       },
     ],
   },
@@ -162,6 +180,7 @@ export const SECCIONES: Seccion[] = [
           'Registra tractores, bodegas y equipos: la depreciación se calcula sola.',
         ],
         roles: ADMIN,
+        modulos: ['finanzas'],
       },
       {
         to: '/cuentas',
@@ -206,6 +225,7 @@ export const SECCIONES: Seccion[] = [
           'Cierra cada mes cuando lo declares al SII para que nadie lo modifique.',
         ],
         roles: ADMIN,
+        modulos: ['contabilidad'],
       },
       {
         to: '/libros',
@@ -237,10 +257,22 @@ export const SECCIONES: Seccion[] = [
   },
 ]
 
-export function seccionesPara(rol: string | undefined): Seccion[] {
+export const MODULOS: { id: string; nombre: string; descripcion: string }[] = [
+  { id: 'pedidos', nombre: 'Cotizaciones y pedidos', descripcion: 'Preparar cotizaciones y convertirlas en venta.' },
+  { id: 'contabilidad', nombre: 'Contabilidad', descripcion: 'Balance, estado de resultados, libros y cierre de mes.' },
+  { id: 'finanzas', nombre: 'Bancos y flujo de caja', descripcion: 'Conciliación bancaria, flujo proyectado y activos fijos.' },
+  { id: 'productores', nombre: 'Compras a productores', descripcion: 'Recepción en kilos, castigos, factura de compra y lotes.' },
+  { id: 'campo', nombre: 'Campo', descripcion: 'Cuarteles, cuaderno de campo, cosecha, costos y trabajadores de temporada.' },
+  { id: 'despachos', nombre: 'Varios locales', descripcion: 'Mover mercadería entre sucursales con guía de despacho.' },
+]
+
+/** Pantallas del menú según el rol y los módulos activos (sin módulos cargados, se muestran todas). */
+export function seccionesPara(rol: string | undefined, modulos?: string[]): Seccion[] {
   return SECCIONES.map((s) => ({
     ...s,
-    pantallas: s.pantallas.filter((p) => !p.roles || p.roles.includes(rol as Rol)),
+    pantallas: s.pantallas.filter(
+      (p) => !p.oculta && (!p.roles || p.roles.includes(rol as Rol)) && (!p.modulos || !modulos || p.modulos.some((m) => modulos.includes(m))),
+    ),
   })).filter((s) => s.pantallas.length > 0)
 }
 

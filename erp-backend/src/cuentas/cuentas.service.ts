@@ -49,6 +49,45 @@ export class CuentasService {
     return deuda;
   }
 
+  /** Estado de cuenta del cliente: compras a crédito, abonos y devoluciones, con saldo corrido. */
+  async estadoCuenta(entidadId: string, user: UsuarioSesion) {
+    const cliente = await this.prisma.entidad.findUnique({ where: { id: entidadId } });
+    if (!cliente || cliente.tipoEntidad !== 'CLIENTE') throw new NotFoundException('Cliente no encontrado');
+    const sucursal = sucursalDe(user);
+    const ventas = await this.prisma.transaccion.findMany({
+      where: { entidadId, medioPago: 'Credito', tipoTransaccion: 'VENTA', estado: 'Activa', ...(sucursal && { sucursalId: sucursal }) },
+      include: { abonos: { where: { estado: 'VIGENTE' } }, retornos: { where: { estado: 'Activa', medioPago: 'Credito' } } },
+      orderBy: { fechaRegistro: 'asc' },
+    });
+    const hoy = new Date();
+    const movimientos = ventas
+      .flatMap((v) => [
+        { fecha: v.fechaRegistro, detalle: `Compra, documento N° ${v.numeroFactura ?? '—'}`, cargo: v.montoTotal, abono: new D(0), vence: sumarDias(v.fechaRegistro, cliente.diasCredito) },
+        ...v.abonos.map((a) => ({ fecha: a.fecha, detalle: `Pago (${a.medioPago})`, cargo: new D(0), abono: a.monto, vence: null as Date | null })),
+        ...v.retornos.map((r) => ({ fecha: r.fechaRegistro, detalle: 'Devolución', cargo: new D(0), abono: r.montoTotal, vence: null as Date | null })),
+      ])
+      .sort((a, b) => a.fecha.getTime() - b.fecha.getTime());
+    let saldo = new D(0);
+    const filas = movimientos.map((m) => {
+      saldo = saldo.add(m.cargo).sub(m.abono);
+      return { ...m, saldo };
+    });
+    const pendientes: { folio: string | null; fecha: Date; vence: Date; saldo: Prisma.Decimal }[] = [];
+    for (const v of ventas) {
+      const s = await CuentasService.saldoVenta(this.prisma, v.id);
+      if (s.gt(0)) pendientes.push({ folio: v.numeroFactura, fecha: v.fechaRegistro, vence: sumarDias(v.fechaRegistro, cliente.diasCredito), saldo: s });
+    }
+    const vencido = pendientes.filter((p) => p.vence < hoy).reduce((t, p) => t.add(p.saldo), new D(0));
+    return {
+      cliente: { id: cliente.id, rut: cliente.rut, nombre: cliente.nombreRazonSocial, direccion: cliente.direccion, email: cliente.email, cupoCredito: cliente.cupoCredito, diasCredito: cliente.diasCredito },
+      movimientos: filas,
+      pendientes,
+      saldo,
+      vencido,
+      cupoDisponible: D.max(cliente.cupoCredito.sub(saldo), 0),
+    };
+  }
+
   /** Documentos con saldo, por cliente, con su tramo de antigüedad. */
   async porCobrar(user: UsuarioSesion, sucursalId?: string) {
     const sucursal = sucursalDe(user, sucursalId);

@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
-import { getAlertas, getCajaActual, getDashboard, getLotesPorVencer } from '@/api'
+import { useEmpresa } from '@/hooks/useEmpresa'
+import { getAlertas, getCajaActual, getDashboard, getLotesPorVencer, getPorCobrar } from '@/api'
 import type { DashboardReporte, SesionCaja, StockLocal } from '@/types'
 import { clp } from '@/utils/formato'
-import { accionesPara, frasesDelDia, saludo } from '@/utils/inicio'
+import { accionesPara, frasesDelDia, morosos, saludo } from '@/utils/inicio'
 
 const hoy = () => {
   const d = new Date()
@@ -17,6 +18,7 @@ export default function InicioPage() {
   const [caja, setCaja] = useState<SesionCaja | null | undefined>(undefined)
   const [alertas, setAlertas] = useState<StockLocal[]>([])
   const [lotesPorVencer, setLotesPorVencer] = useState(0)
+  const [clientesMorosos, setClientesMorosos] = useState<{ cantidad: number; monto: number }>()
 
   useEffect(() => {
     const dia = hoy()
@@ -25,11 +27,13 @@ export default function InicioPage() {
       .catch(() => setKpis(null))
     getCajaActual().then((r) => setCaja(r.data || null)).catch(() => setCaja(null))
     getAlertas(user?.sucursalId ?? undefined).then((r) => setAlertas(r.data)).catch(() => setAlertas([]))
+    getPorCobrar().then((r) => setClientesMorosos(morosos(r.data.clientes, dia))).catch(() => {})
     getLotesPorVencer(30, user?.sucursalId ?? undefined).then((r) => setLotesPorVencer(r.data.length)).catch(() => setLotesPorVencer(0))
   }, [user?.sucursalId])
 
-  const acciones = accionesPara(user?.rol)
-  const frases = frasesDelDia({ kpis, caja, alertas: alertas.length, lotesPorVencer })
+  const empresa = useEmpresa()
+  const acciones = accionesPara(user?.rol, empresa?.modulos)
+  const frases = frasesDelDia({ kpis, caja, alertas: alertas.length, lotesPorVencer, clientesMorosos })
 
   return (
     <div className="max-w-5xl space-y-6">

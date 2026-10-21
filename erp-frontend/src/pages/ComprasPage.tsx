@@ -1,3 +1,4 @@
+import SugerenciaCompra from '@/components/SugerenciaCompra'
 import { useEffect, useMemo, useState } from 'react'
 import { useAuth } from '@/context/AuthContext'
 import {
@@ -257,6 +258,8 @@ export default function ComprasPage() {
           Nueva orden de compra
         </button>
       </div>
+
+      <SugerenciaCompra sucursalId={filtroSucursal || user?.sucursalId || sucursales[0]?.id || ''} />
 
       <div className="flex gap-1 border-b border-gray-200">
         {([['ordenes', 'Órdenes de compra'], ['dte', 'DTE recibidos']] as const).map(([id, label]) => (

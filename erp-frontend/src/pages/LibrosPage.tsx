@@ -1,3 +1,4 @@
+import CuadraturaRcv from '@/components/CuadraturaRcv'
 import { useEffect, useState } from 'react'
 import { getLibroCompras, getLibroVentas, getResumenIva } from '@/api'
 import { descargarCsv } from '@/utils/csv'
@@ -73,6 +74,7 @@ export default function LibrosPage() {
         </div>
       )}
 
+      {pestana === 'compras' && <CuadraturaRcv mes={mes} />}
       {pestana !== 'resumen' && libro && (
         <>
           <div className="flex flex-wrap gap-3 items-center">

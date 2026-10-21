@@ -1,3 +1,4 @@
+import EstadoCuenta from '@/components/EstadoCuenta'
 import { useEffect, useState } from 'react'
 import { useAuth } from '@/context/AuthContext'
 import { getPorCobrar, getPorPagar, pagarFacturaCompra, pagarGasto, registrarAbono } from '@/api'
@@ -29,6 +30,7 @@ function BarraTramos({ tramos }: { tramos: Tramos }) {
 }
 
 export default function CuentasPage() {
+  const [estadoDe, setEstadoDe] = useState<string | null>(null)
   const { user } = useAuth()
   const gestiona = user?.rol === 'Administrador' || user?.rol === 'Encargado'
   const [pestana, setPestana] = useState<'cobrar' | 'pagar'>('cobrar')
@@ -57,6 +59,7 @@ export default function CuentasPage() {
   return (
     <div className="space-y-6">
       <h1 className="text-xl font-semibold text-gray-900">Me deben y debo</h1>
+      {estadoDe && <EstadoCuenta clienteId={estadoDe} onCerrar={() => setEstadoDe(null)} />}
       <div className="flex gap-1 border-b border-gray-200">
         <button onClick={() => setPestana('cobrar')} className={`px-4 py-2 text-sm font-medium -mb-px border-b-2 ${pestana === 'cobrar' ? 'border-blue-600 text-blue-700' : 'border-transparent text-gray-500'}`}>Por cobrar</button>
         {gestiona && <button onClick={() => setPestana('pagar')} className={`px-4 py-2 text-sm font-medium -mb-px border-b-2 ${pestana === 'pagar' ? 'border-blue-600 text-blue-700' : 'border-transparent text-gray-500'}`}>Por pagar</button>}
@@ -71,7 +74,10 @@ export default function CuentasPage() {
             <section key={c.cliente.id} className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 space-y-2">
               <div className="flex justify-between">
                 <h2 className="font-semibold text-sm">{c.cliente.nombre} <span className="text-gray-400 font-normal">{c.cliente.rut}</span></h2>
-                <span className="font-bold">{clp(c.saldo)}</span>
+                <span className="flex gap-3 items-center">
+                  <button onClick={() => setEstadoDe(c.cliente.id)} className="text-sm text-blue-700 hover:underline">Estado de cuenta</button>
+                  <span className="font-bold">{clp(c.saldo)}</span>
+                </span>
               </div>
               <table className="w-full text-sm">
                 <thead className="text-xs text-gray-500 uppercase"><tr><th className="text-left py-1">Venta</th><th className="text-left">Vence</th><th className="text-right">Total</th><th className="text-right">Saldo</th><th /></tr></thead>

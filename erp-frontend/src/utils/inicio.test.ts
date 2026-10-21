@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { pantallaDe, seccionesPara, SECCIONES } from '@/navegacion'
-import { accionesPara, frasesDelDia, saludo } from './inicio'
+import { accionesPara, frasesDelDia, morosos, saludo } from './inicio'
 
 const rutas = (rol: string) => seccionesPara(rol).flatMap((s) => s.pantallas.map((p) => p.to))
 
@@ -21,7 +21,7 @@ describe('navegación', () => {
   })
 
   it('el administrador ve todo y no quedan secciones vacías para nadie', () => {
-    expect(rutas('Administrador')).toHaveLength(SECCIONES.flatMap((s) => s.pantallas).length)
+    expect(rutas('Administrador')).toHaveLength(SECCIONES.flatMap((s) => s.pantallas).filter((p) => !p.oculta).length)
     for (const rol of ['Administrador', 'Encargado', 'Vendedor'])
       expect(seccionesPara(rol).every((s) => s.pantallas.length > 0)).toBe(true)
   })
@@ -79,5 +79,25 @@ describe('inicio', () => {
   it('avisa lotes por vencer con enlace a la pantalla de lotes', () => {
     const f = frasesDelDia({ kpis: null, caja: undefined, alertas: 0, lotesPorVencer: 2 })
     expect(f).toEqual([{ texto: '2 lotes vencen en los próximos 30 días o ya vencieron.', tono: 'alerta', to: '/lotes', accion: 'Ver lotes' }])
+  })
+
+  it('los módulos apagados desaparecen del menú y del inicio; las pantallas base siempre están', () => {
+    const r = seccionesPara('Administrador', ['contabilidad']).flatMap((s) => s.pantallas.map((p) => p.to))
+    expect(r).toContain('/contabilidad')
+    expect(r).toContain('/ventas')
+    expect(r).not.toContain('/campo')
+    expect(r).not.toContain('/productores')
+    expect(r).not.toContain('/conteo')
+    expect(seccionesPara('Administrador', ['campo']).flatMap((s) => s.pantallas.map((p) => p.to))).toContain('/lotes')
+    expect(pantallaDe('/conteo')?.label).toBe('Conteo físico')
+  })
+
+  it('cuenta clientes con documentos vencidos y avisa para cobrar', () => {
+    const m = morosos([
+      { documentos: [{ vencimiento: '2026-10-01', saldo: '1000' }, { vencimiento: '2026-11-01', saldo: '500' }] },
+      { documentos: [{ vencimiento: '2026-12-01', saldo: '9000' }] },
+    ], '2026-10-21')
+    expect(m).toEqual({ cantidad: 1, monto: 1000 })
+    expect(frasesDelDia({ kpis: null, caja: undefined, alertas: 0, clientesMorosos: m })[0]).toMatchObject({ texto: '1 cliente tiene pagos atrasados por $1.000.', to: '/cuentas' })
   })
 })

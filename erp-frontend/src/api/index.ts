@@ -458,3 +458,38 @@ export const confirmarPedido = (id: string) => api.patch<Pedido>(`/pedidos/${id}
 export const anularPedido = (id: string) => api.patch<Pedido>(`/pedidos/${id}/anular`, {})
 export const venderPedido = (id: string, medioPago: string, tipoDocumento?: number) =>
   api.post<{ pedido: Pedido; venta: Transaccion }>(`/pedidos/${id}/vender`, { medioPago, tipoDocumento })
+
+// Conteo, sugerencia de compra, estado de cuenta y RCV
+export type ResultadoConteo = {
+  diferencias: { itemId: string; nombre: string; sistema: string; contado: string; diferencia: string; valor: string }[]
+  faltante: string
+  sobrante: string
+  neto: string
+  contados: number
+  cuadran: number
+}
+export const previaConteo = (data: { sucursalId: string; lineas: { itemId: string; contado: number }[]; observaciones?: string }) =>
+  api.post<ResultadoConteo>('/stock/conteo/previa', data)
+export const aplicarConteo = (data: { sucursalId: string; lineas: { itemId: string; contado: number }[]; observaciones?: string }) =>
+  api.post<ResultadoConteo>('/stock/conteo', data)
+export const getSugerenciaCompra = (sucursalId: string, dias = 30) =>
+  api.get<{ itemId: string; nombre: string; unidad: string; stock: string; minimo: string; vendido30: string; porRecibir: string; ventaDiaria: string; diasCobertura: string | null; sugerido: string; costoEstimado: string }[]>(
+    '/stock/sugerencia-compra',
+    { params: { sucursalId, dias } },
+  )
+export const getEstadoCuenta = (clienteId: string) =>
+  api.get<{
+    cliente: { id: string; rut: string; nombre: string; direccion: string | null; email: string | null; cupoCredito: string; diasCredito: number }
+    movimientos: { fecha: string; detalle: string; cargo: string; abono: string; saldo: string; vence: string | null }[]
+    pendientes: { folio: string | null; fecha: string; vence: string; saldo: string }[]
+    saldo: string
+    vencido: string
+    cupoDisponible: string
+  }>(`/cuentas/clientes/${clienteId}/estado`)
+export const cuadrarRcv = (mes: string, contenido: string) =>
+  api.post<{
+    soloEnSii: { tipoDte: number; rut: string; razonSocial: string; folio: string; fecha: string; total: number }[]
+    soloEnSistema: { tipoDte: number; rut: string; razonSocial: string; folio: string; fecha: string; total: number }[]
+    diferencias: { tipoDte: number; rut: string; razonSocial: string; folio: string; total: number; totalSistema: number }[]
+    cuadrados: number
+  }>('/tributario/rcv/cuadrar', { mes, contenido })

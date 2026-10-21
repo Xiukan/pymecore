@@ -1,7 +1,13 @@
-import { Controller, Get, Query } from '@nestjs/common';
+import { Body, Controller, Get, Post, Query } from '@nestjs/common';
+import { IsString, Matches, MaxLength } from 'class-validator';
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { TributarioService } from './tributario.service';
+
+class CuadrarRcvDto {
+  @Matches(/^\d{4}-(0[1-9]|1[0-2])$/) mes: string;
+  @IsString() @MaxLength(5_000_000) contenido: string;
+}
 
 @ApiTags('Tributario')
 @ApiBearerAuth('JWT')
@@ -29,5 +35,11 @@ export class TributarioController {
   @ApiQuery({ name: 'mes', example: '2026-10' })
   resumen(@Query('mes') mes: string) {
     return this.service.resumen(mes ?? '');
+  }
+
+  @Post('rcv/cuadrar')
+  @ApiOperation({ summary: 'Cuadrar el Registro de Compras del SII (CSV) con el libro de compras del mes' })
+  cuadrarRcv(@Body() dto: CuadrarRcvDto) {
+    return this.service.cuadrarRcv(dto.mes, dto.contenido);
   }
 }

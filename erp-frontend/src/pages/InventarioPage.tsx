@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import { useAuth } from '@/context/AuthContext'
 import { getStock, getSucursales, createItem, createStock, adjustStock, getUnidades } from '@/api'
@@ -159,6 +160,7 @@ export default function InventarioPage() {
         <h1 className="text-xl font-semibold text-gray-900">Productos y stock</h1>
 
         <div className="flex items-center gap-3">
+          {user?.rol !== 'Vendedor' && <Link to="/conteo" className="px-3 py-2 rounded-lg border border-gray-300 text-sm">Conteo físico</Link>}
           {user?.rol === 'Administrador' && sucursales.length > 0 && (
             <select
               value={sucursalId}

@@ -18,8 +18,8 @@ const ACCIONES: Accion[] = [
 ]
 
 /** Solo muestra accesos a pantallas que el rol puede abrir. */
-export function accionesPara(rol: string | undefined): Accion[] {
-  const permitidas = new Set(seccionesPara(rol).flatMap((s) => s.pantallas.map((p) => p.to)))
+export function accionesPara(rol: string | undefined, modulos?: string[]): Accion[] {
+  const permitidas = new Set(seccionesPara(rol, modulos).flatMap((s) => s.pantallas.map((p) => p.to)))
   return ACCIONES.filter((a) => permitidas.has(a.to))
 }
 
@@ -41,6 +41,7 @@ export function frasesDelDia(d: {
   caja: { montoApertura: string | number } | null | undefined
   alertas: number
   lotesPorVencer?: number
+  clientesMorosos?: { cantidad: number; monto: number }
 }): Frase[] {
   const frases: Frase[] = []
   if (d.caja === null) frases.push({ texto: 'La caja está cerrada. Ábrela para empezar a vender.', tono: 'alerta', to: '/caja', accion: 'Abrir caja' })
@@ -59,6 +60,13 @@ export function frasesDelDia(d: {
       to: '/lotes',
       accion: 'Ver lotes',
     })
+  if (d.clientesMorosos?.cantidad)
+    frases.push({
+      texto: `${d.clientesMorosos.cantidad} cliente${d.clientesMorosos.cantidad === 1 ? ' tiene' : 's tienen'} pagos atrasados por ${clp(d.clientesMorosos.monto)}.`,
+      tono: 'alerta',
+      to: '/cuentas',
+      accion: 'Cobrar',
+    })
   if (d.kpis) {
     if (d.kpis.numVentas === 0) frases.push({ texto: 'Todavía no hay ventas hoy.', tono: 'normal' })
     else if (d.kpis.resultado < 0)
@@ -66,4 +74,16 @@ export function frasesDelDia(d: {
     else frases.push({ texto: `Después de gastos y mermas, el día va ganando ${clp(d.kpis.resultado)}.`, tono: 'normal' })
   }
   return frases
+}
+
+/** Clientes con algún documento vencido a la fecha y cuánto suman esos documentos. */
+export function morosos(clientes: { documentos: { vencimiento: string; saldo: string }[] }[], dia: string) {
+  let cantidad = 0
+  let monto = 0
+  for (const c of clientes) {
+    const vencidos = c.documentos.filter((d) => d.vencimiento.slice(0, 10) < dia)
+    if (vencidos.length) cantidad++
+    monto += vencidos.reduce((s, d) => s + Number(d.saldo), 0)
+  }
+  return { cantidad, monto }
 }

@@ -169,6 +169,7 @@ export interface Empresa {
   tasaIva: string
   diasCambio: number
   rutConsumidorFinal: string
+  modulos?: string[]
   nombreConsumidorFinal: string
   topeGastoSinDocumento: number
   tasaRetencionHonorarios: string

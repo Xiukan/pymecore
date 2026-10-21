@@ -3,6 +3,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
 import { useOnlineStatus } from '@/hooks/useOnlineStatus'
 import { useSyncPendientes } from '@/hooks/useSyncPendientes'
+import { useEmpresa } from '@/hooks/useEmpresa'
 import { pantallaDe, seccionesPara } from '@/navegacion'
 
 function forzarOffline() {
@@ -59,7 +60,8 @@ export default function Layout() {
     navigate('/login')
   }
 
-  const secciones = seccionesPara(user?.rol)
+  const empresa = useEmpresa()
+  const secciones = seccionesPara(user?.rol, empresa?.modulos)
   const cerrarMenu = () => setMenuAbierto(false)
 
   return (

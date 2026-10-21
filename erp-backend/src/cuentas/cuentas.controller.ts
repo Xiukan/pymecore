@@ -17,6 +17,12 @@ export class CuentasController {
     return this.service.porCobrar(req.user, sucursalId);
   }
 
+  @Get('clientes/:id/estado')
+  @ApiOperation({ summary: 'Estado de cuenta del cliente con saldo corrido y lo vencido' })
+  estado(@Param('id', ParseLooseUuidPipe) id: string, @Request() req: any) {
+    return this.service.estadoCuenta(id, req.user);
+  }
+
   @Post('abonos')
   @ApiOperation({ summary: 'Registrar un abono a una venta a crédito' })
   abonar(@Body() dto: AbonoDto, @Request() req: any) {
