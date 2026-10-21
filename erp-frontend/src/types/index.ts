@@ -26,6 +26,8 @@ export interface Item {
   precioVenta: string
   costoPromedio: string
   afectoIva: boolean
+  retencionIvaPct?: string
+  humedadBasePct?: string
   estado: string
 }
 
@@ -357,6 +359,7 @@ export interface ResumenIva {
   ivaAPagar: string
   remanente: string
   retencionHonorarios: string
+  retencionIva: string
   totalAPagar: string
 }
 
@@ -440,4 +443,80 @@ export interface LibroMayor {
   saldoInicial: string
   saldoFinal: string
   filas: { fecha: string; glosa: string; debe: string; haber: string; saldo: string }[]
+}
+
+export interface Lote {
+  id: string
+  codigo: string
+  itemId: string
+  sucursalId: string
+  origen: string
+  fechaIngreso: string
+  fechaVencimiento: string | null
+  cantidadInicial: string
+  cantidadActual: string
+  item: { nombre: string; codigoSku?: string; unidadMedida: string }
+  sucursal: { nombre: string }
+  productor?: { nombreRazonSocial: string } | null
+}
+
+export interface TrazabilidadLote extends Lote {
+  productor: { rut: string; nombreRazonSocial: string } | null
+  recepcion: { folio: number; fecha: string; tipoDocumento: string; folioDocumento: string } | null
+  movimientos: {
+    id: string
+    tipo: string
+    cantidad: string
+    fecha: string
+    documento: { tipoTransaccion: string; numeroFactura: string | null; fechaRegistro: string; entidad: { rut: string; nombreRazonSocial: string } | null } | null
+    guia: { folio: number; sucursalDestino: { nombre: string } } | null
+  }[]
+}
+
+export interface RecepcionProductor {
+  id: string
+  folio: number
+  fecha: string
+  pesoBruto: string
+  tara: string
+  pesoNeto: string
+  humedadPct: string
+  impurezasPct: string
+  castigoPct: string
+  kilosPagables: string
+  precioKilo: string
+  montoNeto: string
+  iva: string
+  retencionIva: string
+  montoTotal: string
+  montoAPagar: string
+  tipoDocumento: 'FACTURA_COMPRA' | 'FACTURA_PROVEEDOR'
+  folioDocumento: string
+  estado: 'VIGENTE' | 'ANULADO'
+  estadoPago: 'POR_PAGAR' | 'PAGADO'
+  anticipoAplicado: string
+  productor: { id: string; rut: string; nombreRazonSocial: string }
+  item: { id: string; nombre: string; unidadMedida: string }
+  sucursal: { nombre: string }
+  lote: { id: string; codigo: string; fechaVencimiento: string | null } | null
+}
+
+export interface AnticipoProductor {
+  id: string
+  monto: string
+  medioPago: string
+  fecha: string
+  descripcion: string
+  estado: 'VIGENTE' | 'ANULADO'
+  productor: { rut: string; nombreRazonSocial: string }
+  aplicaciones: { monto: string }[]
+}
+
+export interface CuentaProductor {
+  productor: { id: string; rut: string; nombreRazonSocial: string }
+  porPagar: RecepcionProductor[]
+  anticipos: { id: string; fecha: string; descripcion: string; monto: string; saldo: string }[]
+  deuda: string
+  anticipado: string
+  saldo: string
 }

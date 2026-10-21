@@ -7,6 +7,8 @@ import { AppController } from './app.controller';
 import { AuthModule } from './auth/auth.module';
 import { CajaModule } from './caja/caja.module';
 import { ContabilidadModule } from './contabilidad/contabilidad.module';
+import { LotesModule } from './lotes/lotes.module';
+import { ProductoresModule } from './productores/productores.module';
 import { CuentasModule } from './cuentas/cuentas.module';
 import { TributarioModule } from './tributario/tributario.module';
 import { ComprasModule } from './compras/compras.module';
@@ -50,6 +52,8 @@ import { UsuariosModule } from './usuarios/usuarios.module';
     TributarioModule,
     CuentasModule,
     ContabilidadModule,
+    LotesModule,
+    ProductoresModule,
   ],
 })
 export class AppModule {}

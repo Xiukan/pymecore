@@ -75,4 +75,9 @@ describe('inicio', () => {
       'Todavía no hay ventas hoy.',
     ])
   })
+
+  it('avisa lotes por vencer con enlace a la pantalla de lotes', () => {
+    const f = frasesDelDia({ kpis: null, caja: undefined, alertas: 0, lotesPorVencer: 2 })
+    expect(f).toEqual([{ texto: '2 lotes vencen en los próximos 30 días o ya vencieron.', tono: 'alerta', to: '/lotes', accion: 'Ver lotes' }])
+  })
 })

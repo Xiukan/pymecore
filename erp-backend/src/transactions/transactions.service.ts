@@ -15,6 +15,7 @@ import { EmpresaService } from '../empresa/empresa.service';
 import { SiiIntegrationService } from '../sii/sii-integration.service';
 import { reclamarFolio } from '../utils/folios.util';
 import { exigirPeriodoAbierto } from '../utils/periodos';
+import { LotesService } from '../lotes/lotes.service';
 import { TX_OPCIONES } from '../utils/transacciones';
 import { calcularDocumento, dec, peso, share, ZERO } from '../utils/money.util';
 import { CreateTransactionDto } from './dto/create-transaction.dto';
@@ -208,6 +209,13 @@ export class TransactionsService {
         },
         include: { detalles: true },
       });
+      for (const l of lineas) {
+        if (esVenta || dto.tipoTransaccion === TipoTransaccion.MERMA) {
+          await LotesService.consumir(tx, dto.sucursalId, l.itemId, l.cantidad, { tipo: dto.tipoTransaccion, transaccionId: creada.id });
+        } else if (esRetorno) {
+          await LotesService.restaurarDevolucion(tx, dto.transaccionOrigenId!, l.itemId, l.cantidad, creada.id);
+        }
+      }
       if (idem) {
         await tx.operacionIdempotente.update({
           where: { usuarioId_operacion_clave: { usuarioId, operacion: OPERACION, clave: idem.clave } },

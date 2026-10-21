@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
-import { getAlertas, getCajaActual, getDashboard } from '@/api'
+import { getAlertas, getCajaActual, getDashboard, getLotesPorVencer } from '@/api'
 import type { DashboardReporte, SesionCaja, StockLocal } from '@/types'
 import { clp } from '@/utils/formato'
 import { accionesPara, frasesDelDia, saludo } from '@/utils/inicio'
@@ -16,6 +16,7 @@ export default function InicioPage() {
   const [kpis, setKpis] = useState<DashboardReporte['kpis'] | null>(null)
   const [caja, setCaja] = useState<SesionCaja | null | undefined>(undefined)
   const [alertas, setAlertas] = useState<StockLocal[]>([])
+  const [lotesPorVencer, setLotesPorVencer] = useState(0)
 
   useEffect(() => {
     const dia = hoy()
@@ -24,10 +25,11 @@ export default function InicioPage() {
       .catch(() => setKpis(null))
     getCajaActual().then((r) => setCaja(r.data || null)).catch(() => setCaja(null))
     getAlertas(user?.sucursalId ?? undefined).then((r) => setAlertas(r.data)).catch(() => setAlertas([]))
+    getLotesPorVencer(30, user?.sucursalId ?? undefined).then((r) => setLotesPorVencer(r.data.length)).catch(() => setLotesPorVencer(0))
   }, [user?.sucursalId])
 
   const acciones = accionesPara(user?.rol)
-  const frases = frasesDelDia({ kpis, caja, alertas: alertas.length })
+  const frases = frasesDelDia({ kpis, caja, alertas: alertas.length, lotesPorVencer })
 
   return (
     <div className="max-w-5xl space-y-6">

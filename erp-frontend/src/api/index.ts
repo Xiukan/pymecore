@@ -1,5 +1,5 @@
 import { api } from './client'
-import type { AsientoContable, Balance, CuentaContable, EstadoResultados, LibroMayor, CategoriaGasto, Libro, PorCobrar, PorPagar, ResumenIva, SesionCaja, DashboardReporte, DteRecibido, Gasto, ListadoGastos, Empresa, Entidad, OrdenCompra, UnidadMedida, GuiaDespacho, Item, Oferta, StockLocal, Sucursal, Transaccion, Usuario } from '@/types'
+import type { AnticipoProductor, CuentaProductor, Lote, RecepcionProductor, TrazabilidadLote, AsientoContable, Balance, CuentaContable, EstadoResultados, LibroMayor, CategoriaGasto, Libro, PorCobrar, PorPagar, ResumenIva, SesionCaja, DashboardReporte, DteRecibido, Gasto, ListadoGastos, Empresa, Entidad, OrdenCompra, UnidadMedida, GuiaDespacho, Item, Oferta, StockLocal, Sucursal, Transaccion, Usuario } from '@/types'
 
 // Auth
 export const login = (username: string, password: string) =>
@@ -21,6 +21,8 @@ export const createItem = (data: {
   costoPromedio?: number
   precioCompra?: number
   afectoIva?: boolean
+  humedadBasePct?: number
+  retencionIvaPct?: number
 }) => api.post<Item>('/items', data)
 
 export const updateItem = (id: string, data: {
@@ -316,3 +318,34 @@ export const eliminarAsientoManual = (id: string) => api.delete(`/contabilidad/a
 export const getPeriodosCerrados = () => api.get<{ mes: string; cerradoEn: string }[]>('/contabilidad/periodos')
 export const cerrarPeriodo = (mes: string) => api.post(`/contabilidad/periodos/${mes}/cerrar`, {})
 export const reabrirPeriodo = (mes: string) => api.delete(`/contabilidad/periodos/${mes}`)
+
+// Productores y lotes
+export const getRecepcionesProductor = (params: { productorId?: string; estadoPago?: string } = {}) =>
+  api.get<RecepcionProductor[]>('/productores/recepciones', { params })
+export const crearRecepcionProductor = (data: {
+  productorId: string
+  sucursalId: string
+  itemId: string
+  pesoBruto: number
+  tara: number
+  humedadPct?: number
+  impurezasPct?: number
+  precioKilo: number
+  tipoDocumento: string
+  folioDocumento?: string
+  fechaVencimiento?: string
+  observaciones?: string
+}) => api.post<RecepcionProductor>('/productores/recepciones', data)
+export const anularRecepcionProductor = (id: string) => api.patch(`/productores/recepciones/${id}/anular`, {})
+export const pagarRecepcionProductor = (id: string, medioPago: string) =>
+  api.post<RecepcionProductor>(`/productores/recepciones/${id}/pagar`, { medioPago })
+export const getAnticiposProductor = () => api.get<AnticipoProductor[]>('/productores/anticipos')
+export const crearAnticipoProductor = (data: { productorId: string; monto: number; medioPago: string; descripcion: string }) =>
+  api.post('/productores/anticipos', data)
+export const anularAnticipoProductor = (id: string) => api.patch(`/productores/anticipos/${id}/anular`, {})
+export const getCuentaProductor = (id: string) => api.get<CuentaProductor>(`/productores/${id}/cuenta`)
+export const getLotes = (params: { sucursalId?: string; itemId?: string; conSaldo?: boolean } = {}) =>
+  api.get<Lote[]>('/lotes', { params })
+export const getLotesPorVencer = (dias = 30, sucursalId?: string) =>
+  api.get<Lote[]>('/lotes/por-vencer', { params: { dias, sucursalId } })
+export const getTrazabilidadLote = (id: string) => api.get<TrazabilidadLote>(`/lotes/${id}`)

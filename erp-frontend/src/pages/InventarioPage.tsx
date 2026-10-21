@@ -12,6 +12,8 @@ type ModalProducto = {
   precioVenta: string
   costoPromedio: string
   afectoIva: boolean
+  humedadBasePct: string
+  retencionIvaPct: string
   stockInicial: string
   stockMinimo: string
 }
@@ -81,6 +83,8 @@ export default function InventarioPage() {
       precioVenta: '',
       costoPromedio: '',
       afectoIva: false,
+      humedadBasePct: '',
+      retencionIvaPct: '',
       stockInicial: '0',
       stockMinimo: '0',
     })
@@ -88,7 +92,7 @@ export default function InventarioPage() {
 
   const guardarProducto = async () => {
     if (!modalProducto || !sucursalId) return
-    const { codigoSku, nombre, unidadMedida, precioVenta, costoPromedio, afectoIva, stockInicial, stockMinimo } = modalProducto
+    const { codigoSku, nombre, unidadMedida, precioVenta, costoPromedio, afectoIva, humedadBasePct, retencionIvaPct, stockInicial, stockMinimo } = modalProducto
     if (!codigoSku.trim() || !nombre.trim() || !precioVenta) {
       setError('SKU, nombre y precio son obligatorios')
       return
@@ -103,6 +107,8 @@ export default function InventarioPage() {
         precioVenta: parseFloat(precioVenta),
         costoPromedio: costoPromedio ? parseFloat(costoPromedio) : undefined,
         afectoIva,
+        humedadBasePct: humedadBasePct ? parseFloat(humedadBasePct) : undefined,
+        retencionIvaPct: retencionIvaPct ? parseFloat(retencionIvaPct) : undefined,
       })
       await createStock({
         sucursalId,
@@ -319,6 +325,20 @@ export default function InventarioPage() {
                 />
                 <label htmlFor="afectoIva" className="text-sm text-gray-700">Afecto a IVA ({empresa ? Number(empresa.tasaIva) : '…'}%)</label>
               </div>
+
+              <details className="text-sm">
+                <summary className="cursor-pointer text-gray-600">Opciones agrícolas (si lo compras a productores)</summary>
+                <div className="grid grid-cols-2 gap-4 mt-2">
+                  <label className="text-gray-600">Humedad tolerada %
+                    <input inputMode="decimal" value={modalProducto.humedadBasePct} onChange={(e) => setModalProducto({ ...modalProducto, humedadBasePct: e.target.value })}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2" placeholder="Ej: 14" />
+                  </label>
+                  <label className="text-gray-600">Retención IVA cambio de sujeto %
+                    <input inputMode="decimal" value={modalProducto.retencionIvaPct} onChange={(e) => setModalProducto({ ...modalProducto, retencionIvaPct: e.target.value })}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2" placeholder="Ej: 11 (trigo)" />
+                  </label>
+                </div>
+              </details>
 
               <hr className="border-gray-100" />
 

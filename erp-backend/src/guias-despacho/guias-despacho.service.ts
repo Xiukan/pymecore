@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { LotesService } from '../lotes/lotes.service';
 import { TX_OPCIONES } from '../utils/transacciones';
 import { CreateGuiaDto } from './dto/guia.dto';
 
@@ -43,7 +44,7 @@ export class GuiasDespachoService {
         }
       }
 
-      return tx.guiaDespacho.create({
+      const guia = await tx.guiaDespacho.create({
         data: {
           folio,
           sucursalOrigenId: dto.sucursalOrigenId,
@@ -54,6 +55,10 @@ export class GuiasDespachoService {
         },
         include: INCLUDE_FULL,
       });
+      for (const d of dto.detalles) {
+        await LotesService.consumir(tx, dto.sucursalOrigenId, d.itemId, d.cantidad, { tipo: 'DESPACHO', guiaId: guia.id });
+      }
+      return guia;
     }, TX_OPCIONES);
   }
 
@@ -90,6 +95,7 @@ export class GuiasDespachoService {
           create: { sucursalId: guia.sucursalDestinoId, itemId: d.itemId, stockActual: d.cantidad },
         });
       }
+      await LotesService.recibirGuia(tx, id, guia.sucursalDestinoId);
       return tx.guiaDespacho.findUniqueOrThrow({ where: { id }, include: INCLUDE_FULL });
     }, TX_OPCIONES);
   }
@@ -112,6 +118,7 @@ export class GuiasDespachoService {
           create: { sucursalId: guia.sucursalOrigenId, itemId: d.itemId, stockActual: d.cantidad },
         });
       }
+      await LotesService.anularGuia(tx, id);
       return tx.guiaDespacho.findUniqueOrThrow({ where: { id }, include: INCLUDE_FULL });
     }, TX_OPCIONES);
   }

@@ -40,6 +40,7 @@ export function frasesDelDia(d: {
   kpis: { numVentas: number; resultado: number } | null
   caja: { montoApertura: string | number } | null | undefined
   alertas: number
+  lotesPorVencer?: number
 }): Frase[] {
   const frases: Frase[] = []
   if (d.caja === null) frases.push({ texto: 'La caja está cerrada. Ábrela para empezar a vender.', tono: 'alerta', to: '/caja', accion: 'Abrir caja' })
@@ -50,6 +51,13 @@ export function frasesDelDia(d: {
       tono: 'alerta',
       to: '/inventario',
       accion: 'Ver cuáles',
+    })
+  if (d.lotesPorVencer)
+    frases.push({
+      texto: `${d.lotesPorVencer} lote${d.lotesPorVencer === 1 ? ' vence' : 's vencen'} en los próximos 30 días o ya venci${d.lotesPorVencer === 1 ? 'ó' : 'eron'}.`,
+      tono: 'alerta',
+      to: '/lotes',
+      accion: 'Ver lotes',
     })
   if (d.kpis) {
     if (d.kpis.numVentas === 0) frases.push({ texto: 'Todavía no hay ventas hoy.', tono: 'normal' })

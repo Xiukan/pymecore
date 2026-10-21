@@ -16,6 +16,8 @@ export interface FilaLibro {
   total: Prisma.Decimal;
   /** Solo compras: si el IVA da derecho a crédito fiscal. */
   ivaRecuperable?: boolean;
+  /** IVA que el comprador retuvo al vendedor (factura de compra o cambio de sujeto) y debe enterar. */
+  retencionIva?: Prisma.Decimal;
   origen?: string;
 }
 
@@ -41,7 +43,12 @@ export function totalesPorTipo(filas: FilaLibro[]) {
  * Resumen mensual tipo F29: débito = IVA de ventas − NC emitidas; crédito = IVA recuperable de
  * compras − NC recibidas. Si el crédito supera al débito queda remanente para el mes siguiente.
  */
-export function resumenIva(ventas: FilaLibro[], compras: FilaLibro[], retencionHonorarios: Prisma.Decimal.Value) {
+export function resumenIva(
+  ventas: FilaLibro[],
+  compras: FilaLibro[],
+  retencionHonorarios: Prisma.Decimal.Value,
+  retencionIva: Prisma.Decimal.Value = 0,
+) {
   const debito = ventas.reduce((s, f) => s.add(f.iva.mul(signo(f.tipoDte))), cero());
   const credito = compras.filter((f) => f.ivaRecuperable !== false).reduce((s, f) => s.add(f.iva.mul(signo(f.tipoDte))), cero());
   const ivaNoRecuperable = compras.filter((f) => f.ivaRecuperable === false).reduce((s, f) => s.add(f.iva.mul(signo(f.tipoDte))), cero());
@@ -57,6 +64,7 @@ export function resumenIva(ventas: FilaLibro[], compras: FilaLibro[], retencionH
     ivaAPagar,
     remanente: D.max(diferencia.neg(), 0),
     retencionHonorarios: retencion,
-    totalAPagar: ivaAPagar.add(retencion),
+    retencionIva: new D(retencionIva),
+    totalAPagar: ivaAPagar.add(retencion).add(retencionIva),
   };
 }

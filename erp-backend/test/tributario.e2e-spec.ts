@@ -42,7 +42,7 @@ describe('libros de compra/venta y resumen de IVA', () => {
     expect(n(despues.credito) - n(antes.credito)).toBe(1900)
     expect(n(despues.ivaNoRecuperable) - n(antes.ivaNoRecuperable)).toBe(7600)
     expect(n(despues.retencionHonorarios) - n(antes.retencionHonorarios)).toBe(30500)
-    expect(n(despues.totalAPagar)).toBe(n(despues.ivaAPagar) + n(despues.retencionHonorarios))
+    expect(n(despues.totalAPagar)).toBe(n(despues.ivaAPagar) + n(despues.retencionHonorarios) + n(despues.retencionIva))
   })
 
   it('los libros detallan cada documento y sus totales cuadran con el resumen', async () => {

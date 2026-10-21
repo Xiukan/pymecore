@@ -109,14 +109,16 @@ model Sucursal {
   direccion String?
   creadoEn  DateTime @default(now()) @map("creado_en")
 
-  stockLocal    StockLocal[]
-  transacciones Transaccion[]
-  usuarios      Usuario[]
-  guiasOrigen   GuiaDespacho[]     @relation("GuiaOrigen")
-  guiasDestino  GuiaDespacho[]     @relation("GuiaDestino")
-  ordenesCompra OrdenCompra[]
-  gastos        GastoOperacional[]
-  sesionesCaja  SesionCaja[]
+  stockLocal           StockLocal[]
+  transacciones        Transaccion[]
+  usuarios             Usuario[]
+  guiasOrigen          GuiaDespacho[]       @relation("GuiaOrigen")
+  guiasDestino         GuiaDespacho[]       @relation("GuiaDestino")
+  ordenesCompra        OrdenCompra[]
+  gastos               GastoOperacional[]
+  sesionesCaja         SesionCaja[]
+  recepcionesProductor RecepcionProductor[]
+  lotes                Lote[]
 
   @@map("sucursales")
 }
@@ -131,18 +133,20 @@ model Usuario {
   sucursalId     String?       @map("sucursal_id") @db.Uuid
   creadoEn       DateTime      @default(now()) @map("creado_en")
 
-  sucursal            Sucursal?              @relation(fields: [sucursalId], references: [id])
-  transacciones       Transaccion[]
-  gastosOperacionales GastoOperacional[]
-  guiasDespacho       GuiaDespacho[]
-  operaciones         OperacionIdempotente[]
-  ajustesStock        AjusteStock[]
-  ordenesCompra       OrdenCompra[]
-  recepcionesCompra   RecepcionCompra[]
-  facturasCompra      FacturaCompra[]
-  dteRecibidos        DteRecibido[]
-  sesionesCaja        SesionCaja[]
-  abonos              AbonoCliente[]
+  sucursal             Sucursal?              @relation(fields: [sucursalId], references: [id])
+  transacciones        Transaccion[]
+  gastosOperacionales  GastoOperacional[]
+  guiasDespacho        GuiaDespacho[]
+  operaciones          OperacionIdempotente[]
+  ajustesStock         AjusteStock[]
+  ordenesCompra        OrdenCompra[]
+  recepcionesCompra    RecepcionCompra[]
+  facturasCompra       FacturaCompra[]
+  dteRecibidos         DteRecibido[]
+  sesionesCaja         SesionCaja[]
+  abonos               AbonoCliente[]
+  recepcionesProductor RecepcionProductor[]
+  anticiposProductor   AnticipoProductor[]
 
   @@map("usuarios")
 }
@@ -161,33 +165,42 @@ model Entidad {
   diasCredito       Int           @default(30) @map("dias_credito")
   creadoEn          DateTime      @default(now()) @map("creado_en")
 
-  transacciones  Transaccion[]
-  ordenesCompra  OrdenCompra[]
-  facturasCompra FacturaCompra[]
-  dteRecibidos   DteRecibido[]
-  gastos         GastoOperacional[]
+  transacciones        Transaccion[]
+  ordenesCompra        OrdenCompra[]
+  facturasCompra       FacturaCompra[]
+  dteRecibidos         DteRecibido[]
+  gastos               GastoOperacional[]
+  recepcionesProductor RecepcionProductor[]
+  anticiposProductor   AnticipoProductor[]
+  lotes                Lote[]
 
   @@map("entidades")
 }
 
 model Item {
-  id            String        @id @default(uuid()) @db.Uuid
-  codigoSku     String        @unique @map("codigo_sku") @db.VarChar(50)
-  nombre        String        @db.VarChar(150)
-  unidadMedida  String        @map("unidad_medida") @db.VarChar(20)
-  unidad        UnidadMedida  @relation(fields: [unidadMedida], references: [codigo])
-  precioVenta   Decimal       @default(0) @map("precio_venta") @db.Decimal(12, 2)
-  costoPromedio Decimal       @default(0) @map("costo_promedio") @db.Decimal(12, 2)
-  precioCompra  Decimal       @default(0) @map("precio_compra") @db.Decimal(12, 2)
-  afectoIva     Boolean       @default(true) @map("afecto_iva")
-  estado        EstadoGeneral @default(Activo)
-  creadoEn      DateTime      @default(now()) @map("creado_en")
+  id              String        @id @default(uuid()) @db.Uuid
+  codigoSku       String        @unique @map("codigo_sku") @db.VarChar(50)
+  nombre          String        @db.VarChar(150)
+  unidadMedida    String        @map("unidad_medida") @db.VarChar(20)
+  unidad          UnidadMedida  @relation(fields: [unidadMedida], references: [codigo])
+  precioVenta     Decimal       @default(0) @map("precio_venta") @db.Decimal(12, 2)
+  costoPromedio   Decimal       @default(0) @map("costo_promedio") @db.Decimal(12, 2)
+  precioCompra    Decimal       @default(0) @map("precio_compra") @db.Decimal(12, 2)
+  afectoIva       Boolean       @default(true) @map("afecto_iva")
+  // Agro: % del neto que el comprador retiene de IVA (cambio de sujeto parcial) y humedad
+  // base sobre la que se castigan los kilos recibidos.
+  retencionIvaPct Decimal       @default(0) @map("retencion_iva_pct") @db.Decimal(5, 2)
+  humedadBasePct  Decimal       @default(0) @map("humedad_base_pct") @db.Decimal(5, 2)
+  estado          EstadoGeneral @default(Activo)
+  creadoEn        DateTime      @default(now()) @map("creado_en")
 
-  stockLocal     StockLocal[]
-  detalles       TransaccionDetalle[]
-  ofertas        Oferta[]
-  detallesGuia   GuiaDespachoDetalle[]
-  detallesCompra OrdenCompraDetalle[]
+  stockLocal           StockLocal[]
+  detalles             TransaccionDetalle[]
+  ofertas              Oferta[]
+  detallesGuia         GuiaDespachoDetalle[]
+  detallesCompra       OrdenCompraDetalle[]
+  recepcionesProductor RecepcionProductor[]
+  lotes                Lote[]
 
   @@map("items")
 }
@@ -692,4 +705,131 @@ model PagoTransaccion {
 
   @@index([transaccionId])
   @@map("pagos_transaccion")
+}
+
+enum DocumentoProductor {
+  FACTURA_COMPRA
+  FACTURA_PROVEEDOR
+}
+
+// Compra a un productor agrícola: pesaje en romana, castigo por humedad e impurezas y pago
+// por kilo limpio. Con factura de compra (DTE 46) el comprador retiene todo el IVA; con
+// factura del productor se aplica el cambio de sujeto parcial del producto.
+model RecepcionProductor {
+  id               String                @id @default(uuid()) @db.Uuid
+  folio            Int                   @unique
+  productorId      String                @map("productor_id") @db.Uuid
+  sucursalId       String                @map("sucursal_id") @db.Uuid
+  itemId           String                @map("item_id") @db.Uuid
+  usuarioId        String                @map("usuario_id") @db.Uuid
+  fecha            DateTime              @default(now())
+  pesoBruto        Decimal               @map("peso_bruto") @db.Decimal(12, 3)
+  tara             Decimal               @db.Decimal(12, 3)
+  pesoNeto         Decimal               @map("peso_neto") @db.Decimal(12, 3)
+  humedadPct       Decimal               @default(0) @map("humedad_pct") @db.Decimal(5, 2)
+  impurezasPct     Decimal               @default(0) @map("impurezas_pct") @db.Decimal(5, 2)
+  castigoPct       Decimal               @default(0) @map("castigo_pct") @db.Decimal(5, 2)
+  kilosPagables    Decimal               @map("kilos_pagables") @db.Decimal(12, 3)
+  precioKilo       Decimal               @map("precio_kilo") @db.Decimal(12, 2)
+  montoNeto        Decimal               @map("monto_neto") @db.Decimal(12, 2)
+  iva              Decimal               @db.Decimal(12, 2)
+  retencionIva     Decimal               @map("retencion_iva") @db.Decimal(12, 2)
+  montoTotal       Decimal               @map("monto_total") @db.Decimal(12, 2)
+  montoAPagar      Decimal               @map("monto_a_pagar") @db.Decimal(12, 2)
+  tipoDocumento    DocumentoProductor    @map("tipo_documento")
+  folioDocumento   String                @map("folio_documento") @db.VarChar(30)
+  estado           EstadoDocumentoCompra @default(VIGENTE)
+  estadoPago       EstadoPago            @default(POR_PAGAR) @map("estado_pago")
+  fechaPago        DateTime?             @map("fecha_pago") @db.Date
+  medioPago        MedioPago?            @map("medio_pago")
+  anticipoAplicado Decimal               @default(0) @map("anticipo_aplicado") @db.Decimal(12, 2)
+  observaciones    String?               @db.VarChar(300)
+  loteId           String?               @unique @map("lote_id") @db.Uuid
+
+  productor    Entidad              @relation(fields: [productorId], references: [id])
+  sucursal     Sucursal             @relation(fields: [sucursalId], references: [id])
+  item         Item                 @relation(fields: [itemId], references: [id])
+  usuario      Usuario              @relation(fields: [usuarioId], references: [id])
+  lote         Lote?                @relation(fields: [loteId], references: [id])
+  aplicaciones AplicacionAnticipo[]
+
+  @@index([productorId])
+  @@index([fecha])
+  @@map("recepciones_productor")
+}
+
+// Dinero o insumos adelantados a un productor; se descuenta al liquidar sus recepciones.
+model AnticipoProductor {
+  id          String                @id @default(uuid()) @db.Uuid
+  productorId String                @map("productor_id") @db.Uuid
+  usuarioId   String                @map("usuario_id") @db.Uuid
+  monto       Decimal               @db.Decimal(12, 2)
+  medioPago   MedioPago             @map("medio_pago")
+  fecha       DateTime              @db.Date
+  descripcion String                @db.VarChar(200)
+  estado      EstadoDocumentoCompra @default(VIGENTE)
+  creadoEn    DateTime              @default(now()) @map("creado_en")
+
+  productor    Entidad              @relation(fields: [productorId], references: [id])
+  usuario      Usuario              @relation(fields: [usuarioId], references: [id])
+  aplicaciones AplicacionAnticipo[]
+
+  @@index([productorId])
+  @@map("anticipos_productor")
+}
+
+model AplicacionAnticipo {
+  id          String  @id @default(uuid()) @db.Uuid
+  anticipoId  String  @map("anticipo_id") @db.Uuid
+  recepcionId String  @map("recepcion_id") @db.Uuid
+  monto       Decimal @db.Decimal(12, 2)
+
+  anticipo  AnticipoProductor  @relation(fields: [anticipoId], references: [id])
+  recepcion RecepcionProductor @relation(fields: [recepcionId], references: [id])
+
+  @@map("aplicaciones_anticipo")
+}
+
+// Partida identificable de un producto en una sucursal: de dónde vino, cuándo vence y a
+// quién se fue. Las salidas descuentan primero el lote que vence antes.
+model Lote {
+  id               String    @id @default(uuid()) @db.Uuid
+  codigo           String    @db.VarChar(30)
+  itemId           String    @map("item_id") @db.Uuid
+  sucursalId       String    @map("sucursal_id") @db.Uuid
+  origen           String    @db.VarChar(30)
+  productorId      String?   @map("productor_id") @db.Uuid
+  cuartelId        String?   @map("cuartel_id") @db.Uuid
+  fechaIngreso     DateTime  @default(now()) @map("fecha_ingreso")
+  fechaVencimiento DateTime? @map("fecha_vencimiento") @db.Date
+  cantidadInicial  Decimal   @map("cantidad_inicial") @db.Decimal(12, 3)
+  cantidadActual   Decimal   @map("cantidad_actual") @db.Decimal(12, 3)
+
+  item        Item                @relation(fields: [itemId], references: [id])
+  sucursal    Sucursal            @relation(fields: [sucursalId], references: [id])
+  productor   Entidad?            @relation(fields: [productorId], references: [id])
+  recepcion   RecepcionProductor?
+  movimientos MovimientoLote[]
+
+  @@unique([codigo, sucursalId])
+  @@index([itemId, sucursalId])
+  @@map("lotes")
+}
+
+// Salidas y entradas de un lote con el documento que las causó (venta, merma, guía).
+model MovimientoLote {
+  id            String   @id @default(uuid()) @db.Uuid
+  loteId        String   @map("lote_id") @db.Uuid
+  tipo          String   @db.VarChar(20)
+  cantidad      Decimal  @db.Decimal(12, 3)
+  transaccionId String?  @map("transaccion_id") @db.Uuid
+  guiaId        String?  @map("guia_id") @db.Uuid
+  fecha         DateTime @default(now())
+
+  lote Lote @relation(fields: [loteId], references: [id])
+
+  @@index([loteId])
+  @@index([transaccionId])
+  @@index([guiaId])
+  @@map("movimientos_lote")
 }

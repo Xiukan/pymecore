@@ -68,6 +68,24 @@ export const SECCIONES: Seccion[] = [
         roles: GESTION,
       },
       {
+        to: '/productores',
+        label: 'Compras a productores',
+        descripcion: 'Recibe fruta, grano o ganado de productores: pesaje, descuentos por humedad o impurezas y pago por kilo.',
+        ayuda: [
+          'Elige productor y producto, anota el peso bruto y la tara de la romana.',
+          'Si el productor no tiene factura, el sistema prepara tu factura de compra y retiene el IVA.',
+          'Los anticipos que le diste se descuentan solos al pagarle.',
+        ],
+        roles: GESTION,
+      },
+      {
+        to: '/lotes',
+        label: 'Lotes y vencimientos',
+        descripcion: 'De dónde vino cada partida, cuándo vence y a qué clientes se vendió.',
+        ayuda: ['Los lotes en rojo ya vencieron; en naranjo vencen en menos de 30 días.', 'Toca un lote para ver su recorrido completo.'],
+        roles: null,
+      },
+      {
         to: '/precios',
         label: 'Precios y ofertas',
         descripcion: 'Cambia precios y crea descuentos por tiempo limitado.',

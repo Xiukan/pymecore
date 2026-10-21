@@ -5,6 +5,8 @@ import LoginPage from '@/pages/LoginPage'
 import DashboardPage from '@/pages/DashboardPage'
 import InicioPage from '@/pages/InicioPage'
 import ContabilidadPage from '@/pages/ContabilidadPage'
+import ProductoresPage from '@/pages/ProductoresPage'
+import LotesPage from '@/pages/LotesPage'
 import VentasPage from '@/pages/VentasPage'
 import InventarioPage from '@/pages/InventarioPage'
 import HistorialPage from '@/pages/HistorialPage'
@@ -70,6 +72,8 @@ export default function App() {
             <Route path="caja" element={<CajaPage />} />
             <Route path="libros" element={<LibrosPage />} />
             <Route path="contabilidad" element={<ContabilidadPage />} />
+            <Route path="productores" element={<ProductoresPage />} />
+            <Route path="lotes" element={<LotesPage />} />
             <Route path="cuentas" element={<CuentasPage />} />
             <Route path="configuracion" element={<ConfiguracionPage />} />
           </Route>

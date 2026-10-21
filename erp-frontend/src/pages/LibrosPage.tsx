@@ -65,6 +65,7 @@ export default function LibrosPage() {
             <Fila label="Ventas netas" valor={resumen.ventasNetas} />
             <Fila label="Compras netas" valor={resumen.comprasNetas} />
             <Fila label="Retención boletas de honorarios" valor={resumen.retencionHonorarios} />
+            <Fila label="IVA retenido a productores (factura de compra y cambio de sujeto)" valor={resumen.retencionIva} />
             <hr />
             <Fila label="Total a pagar (IVA + retenciones)" valor={resumen.totalAPagar} fuerte />
             <p className="text-xs text-gray-400">No incluye PPM ni impuestos específicos. Verifique con su contador antes de declarar.</p>

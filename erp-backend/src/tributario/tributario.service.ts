@@ -7,6 +7,7 @@ import { FilaLibro, resumenIva, totalesPorTipo } from './libros';
 const D = Prisma.Decimal;
 const cero = () => new D(0);
 const dia = (d: Date) => d.toISOString().slice(0, 10);
+const fechaLocal = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
 /** Rango del mes: ventas usan fecha y hora local; documentos recibidos y gastos, días UTC. */
 function rangoMes(mes: string) {
@@ -72,7 +73,8 @@ export class TributarioService {
    */
   async libroCompras(mes: string) {
     const { utc } = rangoMes(mes);
-    const [dtes, facturas, gastos] = await Promise.all([
+    const { local } = rangoMes(mes);
+    const [dtes, facturas, gastos, productores] = await Promise.all([
       this.prisma.dteRecibido.findMany({
         where: { estado: { not: 'DESCARTADO' }, fechaEmision: utc },
         include: { gasto: { include: { categoria: true } } },
@@ -85,6 +87,10 @@ export class TributarioService {
       this.prisma.gastoOperacional.findMany({
         where: { estado: 'VIGENTE', tipoDocumento: 'FACTURA', fechaRegistro: utc, dte: null },
         include: { proveedor: true, categoria: true },
+      }),
+      this.prisma.recepcionProductor.findMany({
+        where: { estado: 'VIGENTE', fecha: local },
+        include: { productor: true },
       }),
     ]);
     const filas: FilaLibro[] = [
@@ -130,6 +136,23 @@ export class TributarioService {
         ivaRecuperable: g.categoria.ivaRecuperable,
         origen: `Gasto: ${g.categoria.nombre}`,
       })),
+      // Con factura de compra (46) el documento lo emite el comprador; con cambio de sujeto
+      // la factura es del productor (33). En ambos el IVA es crédito y la retención va al F29.
+      ...productores.map((p) => ({
+        fecha: fechaLocal(p.fecha),
+        tipoDte: p.tipoDocumento === 'FACTURA_COMPRA' ? 46 : 33,
+        folio: p.folioDocumento,
+        rut: p.productor.rut,
+        razonSocial: p.productor.nombreRazonSocial,
+        neto: p.montoNeto,
+        exento: cero(),
+        iva: p.iva,
+        otros: cero(),
+        total: p.montoTotal,
+        ivaRecuperable: true,
+        retencionIva: p.retencionIva,
+        origen: 'Recepción de productor',
+      })),
     ].sort((a, b) => a.fecha.localeCompare(b.fecha));
     return { mes, filas, totales: totalesPorTipo(filas) };
   }
@@ -144,6 +167,7 @@ export class TributarioService {
         _sum: { retencion: true },
       }),
     ]);
-    return { mes, ...resumenIva(ventas.filas, compras.filas, honorarios._sum.retencion ?? 0) };
+    const retencionIva = compras.filas.reduce((s, f) => s.add(f.retencionIva ?? 0), cero());
+    return { mes, ...resumenIva(ventas.filas, compras.filas, honorarios._sum.retencion ?? 0, retencionIva) };
   }
 }
