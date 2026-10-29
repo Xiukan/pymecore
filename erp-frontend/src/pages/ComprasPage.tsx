@@ -70,6 +70,7 @@ export default function ComprasPage() {
   const [detalle, setDetalle] = useState<OrdenCompra | null>(null)
   const [accion, setAccion] = useState<null | 'recibir' | 'facturar'>(null)
   const [cantidades, setCantidades] = useState<Record<string, string>>({})
+  const [vencimientos, setVencimientos] = useState<Record<string, string>>({})
   const [costos, setCostos] = useState<Record<string, string>>({})
   const [doc, setDoc] = useState({ guia: '', folio: '', fechaEmision: hoy(), fechaVencimiento: '', montoTotal: '' })
   const [enviando, setEnviando] = useState(false)
@@ -228,7 +229,7 @@ export default function ComprasPage() {
       return ejecutar(() =>
         recibirOrdenCompra(detalle.id, {
           guiaDespacho: doc.guia || undefined,
-          detalles: lineas.map((l) => ({ detalleId: l.d.id, cantidad: l.cantidad })),
+          detalles: lineas.map((l) => ({ detalleId: l.d.id, cantidad: l.cantidad, fechaVencimiento: vencimientos[l.d.id] || undefined })),
         }),
       )
     }
@@ -458,6 +459,7 @@ export default function ComprasPage() {
                 <th className="px-3 py-2 text-right">Costo neto</th>
                 <th className="px-3 py-2 text-right">Subtotal</th>
                 {accion && <th className="px-3 py-2 text-right">{accion === 'recibir' ? 'Recibir' : 'Facturar'}</th>}
+                {accion === 'recibir' && <th className="px-3 py-2 text-left">Vence (si es perecible)</th>}
                 {accion === 'facturar' && <th className="px-3 py-2 text-right">Costo factura</th>}
               </tr>
             </thead>
@@ -473,6 +475,11 @@ export default function ComprasPage() {
                   {accion && (
                     <td className="px-3 py-2 w-28">
                       <input type="number" min="0" step="any" value={cantidades[d.id] ?? ''} onChange={(e) => setCantidades({ ...cantidades, [d.id]: e.target.value })} className={`${input} text-right`} />
+                    </td>
+                  )}
+                  {accion === 'recibir' && (
+                    <td className="px-3 py-2 w-40">
+                      <input type="date" aria-label={`Vencimiento de ${d.item.nombre}`} value={vencimientos[d.id] ?? ''} onChange={(e) => setVencimientos({ ...vencimientos, [d.id]: e.target.value })} className={input} />
                     </td>
                   )}
                   {accion === 'facturar' && (

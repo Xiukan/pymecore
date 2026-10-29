@@ -43,6 +43,7 @@ export interface DteResult {
   folio: number;
   tipoDoc: number;
   rutEmisor: string;
+  rutReceptor?: string;
   fechaEmision: string;
   montoTotal: number;
   xmlFirmado: string;
@@ -54,7 +55,10 @@ export interface DteResult {
 @Injectable()
 export class SiiIntegrationService {
   private readonly logger = new Logger(SiiIntegrationService.name);
+  // Rutas del CAF y del certificado desde el entorno (ADR-03); por defecto, sii-certs/.
   private readonly certsDir = path.join(process.cwd(), 'sii-certs');
+  private readonly rutaCaf = process.env.SII_CAF_PATH || path.join(this.certsDir, 'CAF_Prueba.xml');
+  private readonly rutaP12 = process.env.SII_P12_PATH || path.join(this.certsDir, 'mi_certificado.p12');
   private caf?: { cafPrivKeyPem: string; daXml: string };
   private p12?: { privateKeyPem: string; certPem: string };
 
@@ -75,6 +79,7 @@ export class SiiIntegrationService {
         folio: datos.folio,
         tipoDoc: datos.tipoDoc,
         rutEmisor: datos.emisor.rut,
+        rutReceptor: datos.rutReceptor,
         fechaEmision: datos.fechaEmision,
         montoTotal: datos.montoTotal,
         xmlFirmado,
@@ -87,7 +92,7 @@ export class SiiIntegrationService {
   }
 
   private parseCaf(): { cafPrivKeyPem: string; daXml: string } {
-    const cafRaw = fs.readFileSync(path.join(this.certsDir, 'CAF_Prueba.xml'), 'utf8');
+    const cafRaw = fs.readFileSync(this.rutaCaf, 'utf8');
     const doc = new DOMParser().parseFromString(cafRaw, 'text/xml');
 
     const rsask = (doc.getElementsByTagName('RSASK')[0].textContent ?? '').trim();
@@ -175,7 +180,7 @@ export class SiiIntegrationService {
   }
 
   private loadP12(): { privateKeyPem: string; certPem: string } {
-    const p12Der = fs.readFileSync(path.join(this.certsDir, 'mi_certificado.p12'));
+    const p12Der = fs.readFileSync(this.rutaP12);
     const p12Asn1 = forge.asn1.fromDer(
       forge.util.createBuffer(p12Der.toString('binary')),
     );
@@ -233,6 +238,7 @@ export class SiiIntegrationService {
       folio: datos.folio,
       tipoDoc: datos.tipoDoc,
       rutEmisor: datos.emisor.rut,
+      rutReceptor: datos.rutReceptor,
       fechaEmision: datos.fechaEmision,
       montoTotal: datos.montoTotal,
       xmlFirmado: mockXml,

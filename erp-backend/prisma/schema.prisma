@@ -249,6 +249,9 @@ model Transaccion {
   sincronizacion      EstadoSincronizacion @default(SINCRONIZADO)
   // Cuándo se tomó para enviar al SII: si el proceso se cae, se libera pasado un plazo.
   enviandoDesde       DateTime?            @map("enviando_desde")
+  // Estado del DTE ante el SII: un rechazo no anula la venta (AC-04).
+  estadoDte           EstadoDte?           @map("estado_dte")
+  glosaSii            String?              @map("glosa_sii") @db.VarChar(200)
   motivoMerma         String?              @map("motivo_merma") @db.VarChar(200)
   numeroFactura       String?              @map("numero_factura") @db.VarChar(50)
   metadatosSii        Json?                @map("metadatos_sii")
@@ -439,7 +442,9 @@ model AjusteStock {
 model Empresa {
   id                      Int      @id @default(1)
   // Módulos que usa la empresa: lo demás se oculta del menú para mantenerlo simple.
-  modulos                 String[] @default(["contabilidad", "pedidos"])
+  modulos                 String[] @default([])
+  // Días antes del vencimiento en que un lote pasa a "Próximo a vencer" (PBI-03, RNF-MAN-01).
+  diasAlertaVencimiento   Int      @default(3) @map("dias_alerta_vencimiento")
   rut                     String   @db.VarChar(12)
   razonSocial             String   @map("razon_social") @db.VarChar(100)
   giro                    String   @db.VarChar(80)
@@ -1208,4 +1213,91 @@ model PedidoDetalle {
   item   Item   @relation(fields: [itemId], references: [id])
 
   @@map("pedidos_detalle")
+}
+
+enum EstadoDte {
+  PENDIENTE_ENVIO_SII
+  ACEPTADO
+  RECHAZADO
+}
+
+// Cola de envío a la nube (patrón outbox, ADR-02): se escribe en la misma transacción que
+// la venta y se marca enviada solo cuando la nube confirma. La secuencia local ordena los
+// envíos sin depender del reloj del local (DA-06).
+model OutboxSync {
+  id          String    @id @default(uuid()) @db.Uuid
+  ventaId     String    @unique @map("venta_id") @db.Uuid
+  secuencia   Int       @unique @default(autoincrement())
+  intentos    Int       @default(0)
+  ultimoError String?   @map("ultimo_error") @db.VarChar(300)
+  creadoEn    DateTime  @default(now()) @map("creado_en")
+  enviadoEn   DateTime? @map("enviado_en")
+
+  @@index([enviadoEn])
+  @@map("outbox_sync")
+}
+
+// Licencia de uso emitida por la nube; el local la valida sin conexión (AC-07).
+model LeaseToken {
+  instalacionId      String   @id @map("instalacion_id") @db.Uuid
+  jwt                String   @db.Text
+  emitidoEn          DateTime @map("emitido_en")
+  venceEn            DateTime @map("vence_en")
+  ultimaValidacionEn DateTime @default(now()) @map("ultima_validacion_en")
+
+  @@map("lease_tokens")
+}
+
+// ── Tablas de la nube (solo se usan en MODO=cloud) ──
+
+enum EstadoSuscripcion {
+  ACTIVA
+  SUSPENDIDA
+}
+
+model Tenant {
+  id                String            @id @default(uuid()) @db.Uuid
+  nombre            String            @db.VarChar(120)
+  estadoSuscripcion EstadoSuscripcion @default(ACTIVA) @map("estado_suscripcion")
+  creadoEn          DateTime          @default(now()) @map("creado_en")
+
+  instalaciones Instalacion[]
+  ventas        VentaNube[]
+
+  @@map("tenants")
+}
+
+// Un local (nodo de borde) de una PYME. Se autentica con su id y un secreto.
+model Instalacion {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  nombre      String   @db.VarChar(120)
+  secretoHash String   @map("secreto_hash") @db.Char(64)
+  activa      Boolean  @default(true)
+  creadoEn    DateTime @default(now()) @map("creado_en")
+
+  tenant Tenant      @relation(fields: [tenantId], references: [id])
+  ventas VentaNube[]
+
+  @@map("instalaciones")
+}
+
+// Venta consolidada en la nube. El id es el UUID que generó el local: llega una sola vez.
+model VentaNube {
+  id            String    @id @db.Uuid
+  tenantId      String    @map("tenant_id") @db.Uuid
+  instalacionId String    @map("instalacion_id") @db.Uuid
+  secuencia     Int
+  creadaEn      DateTime  @map("creada_en")
+  total         Decimal   @db.Decimal(12, 2)
+  payload       Json
+  estadoDte     EstadoDte @default(PENDIENTE_ENVIO_SII) @map("estado_dte")
+  glosaSii      String?   @map("glosa_sii") @db.VarChar(200)
+  recibidaEn    DateTime  @default(now()) @map("recibida_en")
+
+  tenant      Tenant      @relation(fields: [tenantId], references: [id])
+  instalacion Instalacion @relation(fields: [instalacionId], references: [id])
+
+  @@index([tenantId, creadaEn])
+  @@map("ventas_nube")
 }

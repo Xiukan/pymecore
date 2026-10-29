@@ -8,6 +8,7 @@ import { AuthModule } from './auth/auth.module';
 import { CajaModule } from './caja/caja.module';
 import { CampoModule } from './campo/campo.module';
 import { FinanzasModule } from './finanzas/finanzas.module';
+import { NubeModule } from './nube/nube.module';
 import { PedidosModule } from './pedidos/pedidos.module';
 import { PreciosModule } from './precios/precios.module';
 import { ContabilidadModule } from './contabilidad/contabilidad.module';
@@ -62,6 +63,7 @@ import { UsuariosModule } from './usuarios/usuarios.module';
     FinanzasModule,
     PreciosModule,
     PedidosModule,
+    NubeModule,
   ],
 })
 export class AppModule {}

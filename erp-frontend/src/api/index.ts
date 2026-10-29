@@ -212,7 +212,7 @@ export const createOrdenCompra = (data: {
 
 export const recibirOrdenCompra = (id: string, data: {
   guiaDespacho?: string
-  detalles: { detalleId: string; cantidad: number }[]
+  detalles: { detalleId: string; cantidad: number; fechaVencimiento?: string }[]
 }) => api.post(`/compras/ordenes/${id}/recepciones`, data)
 
 export const facturarOrdenCompra = (id: string, data: {
@@ -493,3 +493,30 @@ export const cuadrarRcv = (mes: string, contenido: string) =>
     diferencias: { tipoDte: number; rut: string; razonSocial: string; folio: string; total: number; totalSistema: number }[]
     cuadrados: number
   }>('/tributario/rcv/cuadrar', { mes, contenido })
+
+// Vencimientos, sincronización con la nube y licencia
+export type EstadoVencimiento = 'VENCIDO' | 'PROXIMO_A_VENCER' | 'OK' | 'SIN_DATO'
+export interface AlertaVencimiento {
+  productoId: string
+  nombre: string
+  unidad: string
+  sucursal: string
+  loteId: string | null
+  lote: string | null
+  cantidad: string
+  fechaVencimiento: string | null
+  estadoVencimiento: EstadoVencimiento
+  diasRestantes: number | null
+}
+export const getAlertasVencimiento = (sucursalId?: string) =>
+  api.get<AlertaVencimiento[]>('/inventario/alertas', { params: { sucursalId } })
+export const registrarLote = (data: { itemId: string; sucursalId: string; cantidad: number; fechaVencimiento: string; codigo?: string }) =>
+  api.post('/lotes', data)
+export interface EstadoSync {
+  modo: 'local' | 'edge' | 'cloud'
+  pendientes: number
+  ultimoSyncExitoso: string | null
+  conectividad: 'EN_LINEA' | 'SIN_CONEXION' | 'NO_CONFIGURADA'
+  licencia: { vigente: true; venceEn: string; enGracia: boolean } | { vigente: false; motivo: string } | null
+}
+export const getEstadoSync = () => api.get<EstadoSync>('/sync/estado')
