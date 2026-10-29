@@ -1,0 +1,13 @@
+RESUMEN DE PRUEBAS — PYMECORE
+Fecha: 2026-10-29 00:15  ·  Commit: 0168312
+Node v20.20.2 · pnpm 10.34.4 · PostgreSQL 16 (Docker)
+
+Estado | Suite | Resultado | Duración
+PASA   | Backend unitarias (Jest) | Test Suites: 21 passed, 21 total Tests: 123 passed, 123 total | 4s
+PASA   | Backend integración (Jest + PostgreSQL) | Test Suites: 14 passed, 14 total Tests: 101 passed, 101 total | 34s
+PASA   | Frontend unitarias (Vitest) |  Test Files 12 passed (12)  Tests 38 passed (38) | 1s
+PASA   | Navegador (Playwright) |  19 passed (13.8s) | 16s
+
+RESULTADO GLOBAL: TODAS LAS SUITES PASAN
+
+Detalle de cada suite en .pruebas-logs/
