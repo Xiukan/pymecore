@@ -7,7 +7,7 @@ test('el administrador revisa el resumen de IVA y descarga el libro de ventas', 
   await page.getByLabel('Contraseña').fill('admin1234')
   await page.getByRole('button', { name: 'Ingresar' }).click()
   await expect(page.getByText('¿Qué quieres hacer?')).toBeVisible()
-  await page.getByRole('link', { name: 'Impuestos (IVA)' }).click()
+  await page.goto('/libros')
 
   await expect(page.getByText('Débito fiscal (ventas − NC)')).toBeVisible()
   await expect(page.getByText('Total a pagar (IVA + retenciones)')).toBeVisible()

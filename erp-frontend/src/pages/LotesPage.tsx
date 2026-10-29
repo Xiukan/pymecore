@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
-import { getLotes, getTrazabilidadLote } from '@/api'
+import { getAlertasVencimiento, getLotes, getSucursales, getTrazabilidadLote, registrarLote, type AlertaVencimiento } from '@/api'
+import { useAuth } from '@/context/AuthContext'
+import { etiquetaVencimiento } from '@/utils/vencimiento'
 import type { Lote, TrazabilidadLote } from '@/types'
 import { mensajeError } from '@/utils/contabilidad'
 import { diasParaVencer } from '@/utils/productores'
@@ -24,6 +26,112 @@ function Vencimiento({ fecha }: { fecha: string | null }) {
 }
 
 export default function LotesPage() {
+  const [vista, setVista] = useState<'vencimientos' | 'lotes'>('vencimientos')
+  return (
+    <div className="space-y-4 max-w-6xl">
+      <div className="flex gap-1 border-b border-gray-200">
+        {([['vencimientos', 'Vencimientos'], ['lotes', 'Lotes y trazabilidad']] as const).map(([id, label]) => (
+          <button key={id} onClick={() => setVista(id)}
+            className={`px-4 py-2 text-sm font-medium -mb-px border-b-2 ${vista === id ? 'border-blue-600 text-blue-700' : 'border-transparent text-gray-500'}`}>
+            {label}
+          </button>
+        ))}
+      </div>
+      {vista === 'vencimientos' ? <Vencimientos /> : <Lotes />}
+    </div>
+  )
+}
+
+function Vencimientos() {
+  const { user } = useAuth()
+  const [filas, setFilas] = useState<AlertaVencimiento[]>([])
+  const [filtro, setFiltro] = useState<'alertas' | 'todos'>('alertas')
+  const [registrar, setRegistrar] = useState<AlertaVencimiento | null>(null)
+  const [error, setError] = useState('')
+  const cargar = () => getAlertasVencimiento().then((r) => setFilas(r.data)).catch((e) => setError(mensajeError(e)))
+  useEffect(() => { cargar() }, [])
+  const visibles = filas.filter((f) => filtro === 'todos' || f.estadoVencimiento !== 'OK')
+  const gestiona = user?.rol !== 'Vendedor'
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-xl font-semibold text-gray-900">Vencimientos</h1>
+        <select value={filtro} onChange={(e) => setFiltro(e.target.value as 'alertas' | 'todos')} className="border border-gray-300 rounded-lg px-3 py-2 text-sm">
+          <option value="alertas">Por vencer, vencidos y sin dato</option>
+          <option value="todos">Todo el inventario</option>
+        </select>
+      </div>
+      {error && <p className="text-sm text-red-600">{error}</p>}
+      <ul className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
+        {visibles.map((f, i) => {
+          const e = etiquetaVencimiento(f.estadoVencimiento, f.diasRestantes)
+          return (
+            <li key={`${f.productoId}${f.loteId ?? i}`} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+              <div>
+                <p className="font-medium text-[15px]">{f.nombre}</p>
+                <p className="text-sm text-gray-500">
+                  {Number(f.cantidad).toLocaleString('es-CL')} {f.unidad.toLowerCase()} · {f.sucursal}
+                  {f.lote && <> · lote {f.lote}</>}
+                  {f.fechaVencimiento && <> · vence {f.fechaVencimiento.slice(0, 10)}</>}
+                </p>
+              </div>
+              <span className="flex items-center gap-3">
+                <span role="status" className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm font-medium ${e.clase}`}>
+                  <span aria-hidden="true">{e.icono}</span>{e.texto}
+                </span>
+                {gestiona && f.estadoVencimiento === 'SIN_DATO' && (
+                  <button onClick={() => setRegistrar(f)} className="text-sm text-blue-700 hover:underline">Registrar vencimiento</button>
+                )}
+              </span>
+            </li>
+          )
+        })}
+        {visibles.length === 0 && <li className="px-4 py-6 text-center text-gray-400">Nada por vencer.</li>}
+      </ul>
+      {registrar && <RegistrarVencimiento fila={registrar} onCerrar={() => setRegistrar(null)} onListo={() => { setRegistrar(null); cargar() }} />}
+    </div>
+  )
+}
+
+function RegistrarVencimiento({ fila, onCerrar, onListo }: { fila: AlertaVencimiento; onCerrar: () => void; onListo: () => void }) {
+  const { user } = useAuth()
+  const [cantidad, setCantidad] = useState(String(Number(fila.cantidad)))
+  const [fecha, setFecha] = useState('')
+  const [error, setError] = useState('')
+  const [sucursalId, setSucursalId] = useState(user?.sucursalId ?? '')
+  useEffect(() => {
+    if (!user?.sucursalId) getSucursales().then((r) => setSucursalId(r.data.find((x) => x.nombre === fila.sucursal)?.id ?? r.data[0]?.id ?? ''))
+  }, [])
+  const guardar = async () => {
+    setError('')
+    try {
+      await registrarLote({ itemId: fila.productoId, sucursalId, cantidad: Number(cantidad.replace(',', '.')), fechaVencimiento: fecha })
+      onListo()
+    } catch (e) {
+      setError(mensajeError(e))
+    }
+  }
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onCerrar}>
+      <div className="bg-white rounded-xl p-5 w-full max-w-md space-y-3 text-sm" onClick={(e) => e.stopPropagation()}>
+        <h2 className="text-lg font-semibold">Registrar vencimiento: {fila.nombre}</h2>
+        <label className="block text-gray-600">Cantidad con esa fecha
+          <input inputMode="decimal" value={cantidad} onChange={(e) => setCantidad(e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2" />
+        </label>
+        <label className="block text-gray-600">Fecha de vencimiento
+          <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2" />
+        </label>
+        {error && <p className="text-red-600">{error}</p>}
+        <div className="flex justify-end gap-2">
+          <button onClick={onCerrar} className="px-4 py-2 rounded-lg border border-gray-300">Cancelar</button>
+          <button onClick={guardar} disabled={!fecha || !(Number(cantidad.replace(',', '.')) > 0)} className="px-4 py-2 rounded-lg bg-blue-600 text-white disabled:opacity-50">Guardar</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function Lotes() {
   const [lotes, setLotes] = useState<Lote[]>([])
   const [conSaldo, setConSaldo] = useState(true)
   const [busqueda, setBusqueda] = useState('')
@@ -35,9 +143,9 @@ export default function LotesPage() {
   const visibles = lotes.filter((l) => !q || l.codigo.toLowerCase().includes(q) || l.item.nombre.toLowerCase().includes(q))
 
   return (
-    <div className="space-y-4 max-w-6xl">
+    <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold text-gray-900">Lotes y vencimientos</h1>
+        <h2 className="text-lg font-semibold text-gray-900">Lotes y trazabilidad</h2>
         <div className="flex gap-3 items-center text-sm">
           <input placeholder="Buscar lote o producto" value={busqueda} onChange={(e) => setBusqueda(e.target.value)} className="border border-gray-300 rounded-lg px-3 py-2" />
           <label className="flex items-center gap-2"><input type="checkbox" checked={conSaldo} onChange={(e) => setConSaldo(e.target.checked)} /> Solo con saldo</label>
@@ -67,7 +175,7 @@ export default function LotesPage() {
                 <td className="px-3 py-2"><Vencimiento fecha={l.fechaVencimiento} /></td>
               </tr>
             ))}
-            {visibles.length === 0 && <tr><td colSpan={6} className="px-3 py-6 text-center text-gray-400">Sin lotes. Se crean al recibir producto de un productor.</td></tr>}
+            {visibles.length === 0 && <tr><td colSpan={6} className="px-3 py-6 text-center text-gray-400">Sin lotes. Se crean al recibir compras con fecha de vencimiento o al registrarla en Vencimientos.</td></tr>}
           </tbody>
         </table>
       </div>

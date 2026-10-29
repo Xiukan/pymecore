@@ -52,6 +52,7 @@ export const SECCIONES: Seccion[] = [
         descripcion: 'Cuando un cliente devuelve un producto que compró.',
         ayuda: ['Busca la venta por su número de boleta o factura.', 'Marca lo que devuelve y confirma.'],
         roles: null,
+        modulos: ['devoluciones'],
       },
       {
         to: '/historial',
@@ -93,11 +94,14 @@ export const SECCIONES: Seccion[] = [
       },
       {
         to: '/lotes',
-        label: 'Lotes y vencimientos',
-        descripcion: 'De dónde vino cada partida, cuándo vence y a qué clientes se vendió.',
-        ayuda: ['Los lotes en rojo ya vencieron; en naranjo vencen en menos de 30 días.', 'Toca un lote para ver su recorrido completo.'],
+        label: 'Vencimientos',
+        descripcion: 'Qué insumos están por vencer, cuáles vencieron y cuáles no tienen fecha registrada.',
+        ayuda: [
+          '"Próximo a vencer" aparece a 3 días o menos (se cambia en Datos de la empresa).',
+          '"Sin dato" significa que ese stock no tiene fecha: regístrala con "Registrar vencimiento".',
+          'Toca un lote para ver de dónde vino y a quién se vendió.',
+        ],
         roles: null,
-        modulos: ['productores', 'campo'],
       },
       {
         to: '/conteo',
@@ -113,6 +117,7 @@ export const SECCIONES: Seccion[] = [
         descripcion: 'Cambia precios y crea descuentos por tiempo limitado.',
         ayuda: ['Los precios incluyen IVA.', 'Una oferta se aplica sola en la caja mientras esté vigente.'],
         roles: GESTION,
+        modulos: ['ofertas'],
       },
       {
         to: '/mermas',
@@ -169,6 +174,7 @@ export const SECCIONES: Seccion[] = [
         descripcion: 'Anota lo que gasta el negocio: luz, arriendo, combustible, sueldos, etc.',
         ayuda: ['Elige el tipo de gasto y el monto total.', 'Si tienes factura, el sistema separa el IVA solo.'],
         roles: GESTION,
+        modulos: ['gastos'],
       },
       {
         to: '/finanzas',
@@ -188,6 +194,7 @@ export const SECCIONES: Seccion[] = [
         descripcion: 'Clientes que te compraron fiado y facturas de proveedores por pagar.',
         ayuda: ['Registra un abono cuando un cliente te paga una deuda.', 'Los montos atrasados aparecen primero.'],
         roles: null,
+        modulos: ['clientes'],
       },
       {
         to: '/clientes',
@@ -195,6 +202,7 @@ export const SECCIONES: Seccion[] = [
         descripcion: 'Datos de tus clientes y cuánto crédito les das.',
         ayuda: ['Necesitas el RUT para emitir factura o vender fiado.'],
         roles: null,
+        modulos: ['clientes'],
       },
       {
         to: '/documentos',
@@ -214,6 +222,7 @@ export const SECCIONES: Seccion[] = [
         descripcion: 'Gráficos de ventas, ganancias y productos más vendidos.',
         ayuda: ['Elige el período arriba.', 'Resultado = lo que ganaste vendiendo menos pérdidas y gastos.'],
         roles: null,
+        modulos: ['reportes'],
       },
       {
         to: '/contabilidad',
@@ -233,6 +242,7 @@ export const SECCIONES: Seccion[] = [
         descripcion: 'Lo que debes declarar al SII cada mes.',
         ayuda: ['Elige el mes.', 'Entrega estos totales a tu contador o úsalos para el F29.'],
         roles: ADMIN,
+        modulos: ['contabilidad'],
       },
     ],
   },
@@ -258,11 +268,16 @@ export const SECCIONES: Seccion[] = [
 ]
 
 export const MODULOS: { id: string; nombre: string; descripcion: string }[] = [
+  { id: 'ofertas', nombre: 'Precios y ofertas', descripcion: 'Descuentos por tiempo limitado y listas de precios por cliente.' },
+  { id: 'devoluciones', nombre: 'Devoluciones', descripcion: 'Devoluciones y notas de crédito contra la venta original.' },
+  { id: 'clientes', nombre: 'Clientes y fiado', descripcion: 'Ficha de clientes, venta a crédito y cobranza.' },
+  { id: 'gastos', nombre: 'Gastos', descripcion: 'Gastos generales del negocio con su IVA y pago.' },
+  { id: 'reportes', nombre: 'Reportes', descripcion: 'Gráficos de ventas, márgenes y productos.' },
   { id: 'pedidos', nombre: 'Cotizaciones y pedidos', descripcion: 'Preparar cotizaciones y convertirlas en venta.' },
-  { id: 'contabilidad', nombre: 'Contabilidad', descripcion: 'Balance, estado de resultados, libros y cierre de mes.' },
+  { id: 'contabilidad', nombre: 'Contabilidad e impuestos', descripcion: 'Balance, estado de resultados, libros, F29 y cierre de mes.' },
   { id: 'finanzas', nombre: 'Bancos y flujo de caja', descripcion: 'Conciliación bancaria, flujo proyectado y activos fijos.' },
-  { id: 'productores', nombre: 'Compras a productores', descripcion: 'Recepción en kilos, castigos, factura de compra y lotes.' },
-  { id: 'campo', nombre: 'Campo', descripcion: 'Cuarteles, cuaderno de campo, cosecha, costos y trabajadores de temporada.' },
+  { id: 'productores', nombre: 'Compras a productores', descripcion: 'Recepción en kilos, castigos y factura de compra.' },
+  { id: 'campo', nombre: 'Campo', descripcion: 'Cuarteles, cuaderno de campo, cosecha y trabajadores de temporada.' },
   { id: 'despachos', nombre: 'Varios locales', descripcion: 'Mover mercadería entre sucursales con guía de despacho.' },
 ]
 

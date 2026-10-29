@@ -19,6 +19,7 @@ const CAMPOS: { campo: CampoEmpresa; label: string; tipo?: 'number'; ayuda?: str
   { campo: 'rutConsumidorFinal', label: 'RUT consumidor final', ayuda: 'Se usa en boletas sin RUT de cliente' },
   { campo: 'nombreConsumidorFinal', label: 'Nombre consumidor final' },
   { campo: 'topeGastoSinDocumento', label: 'Tope gasto sin documento ($)', tipo: 'number' },
+  { campo: 'diasAlertaVencimiento', label: 'Avisar "Próximo a vencer" con (días)', tipo: 'number', ayuda: 'Por defecto 3 días antes del vencimiento' },
   { campo: 'tasaRetencionHonorarios', label: 'Retención boletas de honorarios (%)', tipo: 'number', ayuda: 'Tasa vigente según el SII para el año' },
 ]
 
@@ -53,6 +54,7 @@ export default function ConfiguracionPage() {
         diasCambio: Number(form.diasCambio),
         topeGastoSinDocumento: Number(form.topeGastoSinDocumento),
         tasaRetencionHonorarios: Number(form.tasaRetencionHonorarios),
+        diasAlertaVencimiento: Number(form.diasAlertaVencimiento),
       })
       invalidarEmpresa()
       setAviso({ ok: true, texto: 'Datos de la empresa actualizados.' })

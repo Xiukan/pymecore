@@ -20,8 +20,16 @@ declare -a RESULTADOS=()
 fallas=0
 PIDS=()
 
+liberar_puerto() {
+  local pid
+  pid=$(ss -ltnp 2>/dev/null | grep ":$1 " | grep -o 'pid=[0-9]*' | cut -d= -f2 | head -1)
+  [ -n "$pid" ] && kill "$pid" 2>/dev/null
+}
+
 limpiar() {
   for p in "${PIDS[@]:-}"; do [ -n "$p" ] && kill "$p" 2>/dev/null; done
+  liberar_puerto $PUERTO_API
+  liberar_puerto $PUERTO_WEB
   docker rm -f "$CONTENEDOR" >/dev/null 2>&1
 }
 trap limpiar EXIT
@@ -40,7 +48,7 @@ suite() { # nombre, directorio, comando...
   (cd "$dir" && "$@") >"$log" 2>&1
   local codigo=$? dur=$((SECONDS - inicio))
   local conteo
-  conteo=$(grep -E "^Tests:|Tests +[0-9]+|[0-9]+ passed|[0-9]+ failed" "$log" | tail -2 | tr -s ' ' | tr '\n' ' ')
+  conteo=$(grep -E "^Tests:|Tests +[0-9]+|[0-9]+ passed|[0-9]+ failed|^RESULTADO:|^Benchmark" "$log" | tail -2 | tr -s ' ' | tr '\n' ' ')
   if [ $codigo -eq 0 ]; then
     echo "  ✔ PASA ($conteo${dur}s)"
     RESULTADOS+=("PASA   | $nombre | $conteo| ${dur}s")
@@ -52,6 +60,8 @@ suite() { # nombre, directorio, comando...
 }
 
 echo "== PYMECORE: pruebas automatizadas =="
+
+suite "Escaneo de secretos (RNF-SEC-02)" "$RAIZ" ./scripts/escanear-secretos.sh
 
 echo "▶ Base de datos temporal (Docker)"
 docker rm -f "$CONTENEDOR" >/dev/null 2>&1
@@ -72,11 +82,14 @@ echo "▶ App completa para pruebas de navegador"
 export DATABASE_URL="$DB_URL_BASE/pyme_e2e"
 (cd "$BACKEND" && pnpm exec prisma migrate deploy && pnpm seed && docker exec -i "$CONTENEDOR" psql -U pruebas -d pyme_e2e -q < scripts/datos-e2e.sql && pnpm build) \
   >"$LOGS/preparar_app.log" 2>&1 || { echo "Falló la preparación de la app (ver $LOGS/preparar_app.log)"; exit 1; }
-(cd "$BACKEND" && JWT_SECRET="pruebas-locales-0123456789abcdef0123456789" LOGIN_MAX_INTENTOS=1000 APP_PORT=$PUERTO_API node dist/src/main.js >"$LOGS/api.log" 2>&1) & PIDS+=($!)
+liberar_puerto $PUERTO_API
+liberar_puerto $PUERTO_WEB
+(cd "$BACKEND" && exec env JWT_SECRET="pruebas-locales-0123456789abcdef0123456789" LOGIN_MAX_INTENTOS=1000 APP_PORT=$PUERTO_API node dist/src/main.js >"$LOGS/api.log" 2>&1) & PIDS+=($!)
 (cd "$FRONTEND" && VITE_API_URL="http://localhost:$PUERTO_API" pnpm exec vite build --outDir "$LOGS/web" --emptyOutDir >"$LOGS/web_build.log" 2>&1 \
-  && pnpm exec vite preview --outDir "$LOGS/web" --port $PUERTO_WEB --strictPort >"$LOGS/web.log" 2>&1) & PIDS+=($!)
+  && exec pnpm exec vite preview --outDir "$LOGS/web" --port $PUERTO_WEB --strictPort >"$LOGS/web.log" 2>&1) & PIDS+=($!)
 if esperar "http://localhost:$PUERTO_API/health" 60 && esperar "http://localhost:$PUERTO_WEB" 120; then
   E2E_BASE_URL="http://localhost:$PUERTO_WEB" suite "Navegador (Playwright)" "$FRONTEND" pnpm exec playwright test --reporter=line
+  suite "Rendimiento p95 de ventas (RNF-REN-01)" "$BACKEND" node scripts/benchmark-ventas.mjs "http://localhost:$PUERTO_API"
 else
   RESULTADOS+=("FALLA  | Navegador (Playwright) | la app no levantó | ver .pruebas-logs/api.log y web.log")
   fallas=$((fallas + 1))
