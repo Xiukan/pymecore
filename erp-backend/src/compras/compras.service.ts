@@ -190,6 +190,23 @@ export class ComprasService {
           create: { sucursalId: orden.sucursalId, itemId: detalle.itemId, stockActual: cantidad },
         });
       }
+      // Insumos perecibles: cada línea con fecha queda como lote para la alerta de vencimiento.
+      for (const [i, l] of dto.detalles.entries()) {
+        if (!l.fechaVencimiento) continue;
+        const detalle = orden.detalles.find((d) => d.id === l.detalleId)!;
+        await tx.lote.create({
+          data: {
+            codigo: `RC-${recepcion.id.slice(0, 8)}-${i + 1}`,
+            itemId: detalle.itemId,
+            sucursalId: orden.sucursalId,
+            origen: 'RECEPCION_COMPRA',
+            productorId: orden.proveedorId,
+            fechaVencimiento: new Date(l.fechaVencimiento),
+            cantidadInicial: l.cantidad,
+            cantidadActual: l.cantidad,
+          },
+        });
+      }
       return recepcion;
     }, TX_OPCIONES);
   }
@@ -204,6 +221,11 @@ export class ComprasService {
         include: { detalles: true },
       });
       if (recepcion.estado !== 'VIGENTE') throw new BadRequestException('La recepción ya está anulada.');
+      const lotes = await tx.lote.findMany({ where: { codigo: { startsWith: `RC-${recepcionId.slice(0, 8)}-` }, sucursalId: orden.sucursalId } });
+      if (lotes.some((l) => !l.cantidadActual.eq(l.cantidadInicial))) {
+        throw new BadRequestException('Parte de lo recibido ya se vendió o despachó; no se puede anular la recepción.');
+      }
+      await tx.lote.updateMany({ where: { id: { in: lotes.map((l) => l.id) } }, data: { cantidadActual: 0 } });
       await exigirPeriodoAbierto(tx, recepcion.fecha);
       const avance = await this.avance(tx, orden.detalles.map((d) => d.id));
 

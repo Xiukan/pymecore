@@ -442,7 +442,9 @@ model AjusteStock {
 model Empresa {
   id                      Int      @id @default(1)
   // Módulos que usa la empresa: lo demás se oculta del menú para mantenerlo simple.
-  modulos                 String[] @default(["contabilidad", "pedidos"])
+  modulos                 String[] @default([])
+  // Días antes del vencimiento en que un lote pasa a "Próximo a vencer" (PBI-03, RNF-MAN-01).
+  diasAlertaVencimiento   Int      @default(3) @map("dias_alerta_vencimiento")
   rut                     String   @db.VarChar(12)
   razonSocial             String   @map("razon_social") @db.VarChar(100)
   giro                    String   @db.VarChar(80)

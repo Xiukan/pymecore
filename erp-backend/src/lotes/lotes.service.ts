@@ -3,14 +3,85 @@ import { Prisma } from '@prisma/client';
 import { exigirSucursal, sucursalDe, UsuarioSesion } from '../auth/sucursal-scope';
 import { PrismaService } from '../prisma/prisma.service';
 import { ZERO } from '../utils/money.util';
+import { EmpresaService } from '../empresa/empresa.service';
+import { RegistrarLoteDto } from './dto/lotes.dto';
 import { repartirFefo } from './fefo';
+import { estadoVencimiento } from './vencimiento';
 
 type Tx = Prisma.TransactionClient;
 const D = Prisma.Decimal;
 
 @Injectable()
 export class LotesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly empresa: EmpresaService,
+  ) {}
+
+  private hoy() {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+
+  /**
+   * Estado de vencimiento del inventario con existencias: un registro por lote con saldo y,
+   * si parte del stock no tiene lote con fecha, un registro "Sin dato" por esa parte.
+   */
+  async alertasInventario(user: UsuarioSesion, sucursalId?: string) {
+    const sucursal = sucursalDe(user, sucursalId);
+    const { diasAlertaVencimiento } = await this.empresa.get();
+    const [stock, lotes] = await Promise.all([
+      this.prisma.stockLocal.findMany({
+        where: { stockActual: { gt: 0 }, item: { estado: 'Activo' }, ...(sucursal && { sucursalId: sucursal }) },
+        include: { item: { select: { nombre: true, unidadMedida: true } }, sucursal: { select: { nombre: true } } },
+      }),
+      this.prisma.lote.findMany({ where: { cantidadActual: { gt: 0 }, ...(sucursal && { sucursalId: sucursal }) } }),
+    ]);
+    const hoy = this.hoy();
+    const filas = stock.flatMap((s) => {
+      const propios = lotes.filter((l) => l.itemId === s.itemId && l.sucursalId === s.sucursalId);
+      const conFecha = propios.filter((l) => l.fechaVencimiento);
+      const cubierto = conFecha.reduce((t, l) => t.add(l.cantidadActual), new D(0));
+      const base = { productoId: s.itemId, nombre: s.item.nombre, unidad: s.item.unidadMedida, sucursal: s.sucursal.nombre };
+      const porLote = conFecha.map((l) => ({ ...base, loteId: l.id, lote: l.codigo, cantidad: l.cantidadActual, fechaVencimiento: l.fechaVencimiento, ...this.estado(l.fechaVencimiento, hoy, diasAlertaVencimiento) }));
+      const sinFecha = D.max(s.stockActual.sub(cubierto), 0);
+      return sinFecha.gt(0)
+        ? [...porLote, { ...base, loteId: null, lote: null, cantidad: sinFecha, fechaVencimiento: null, ...this.estado(null, hoy, diasAlertaVencimiento) }]
+        : porLote;
+    });
+    const orden = { VENCIDO: 0, PROXIMO_A_VENCER: 1, OK: 2, SIN_DATO: 3 };
+    return filas.sort((a, b) => orden[a.estadoVencimiento] - orden[b.estadoVencimiento] || (a.diasRestantes ?? 0) - (b.diasRestantes ?? 0));
+  }
+
+  private estado(fecha: Date | null, hoy: string, umbral: number) {
+    const r = estadoVencimiento(fecha, hoy, umbral);
+    return { estadoVencimiento: r.estado, diasRestantes: r.diasRestantes };
+  }
+
+  /** Registra la fecha de vencimiento de stock que ya está en bodega (sin lote con fecha). */
+  async registrar(dto: RegistrarLoteDto, user: UsuarioSesion) {
+    exigirSucursal(user, dto.sucursalId);
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM stock_local WHERE sucursal_id = ${dto.sucursalId}::uuid AND item_id = ${dto.itemId}::uuid FOR UPDATE`;
+      const stock = await tx.stockLocal.findUnique({ where: { sucursalId_itemId: { sucursalId: dto.sucursalId, itemId: dto.itemId } } });
+      if (!stock) throw new BadRequestException('Ese producto no tiene stock en el local.');
+      const { _sum } = await tx.lote.aggregate({ where: { itemId: dto.itemId, sucursalId: dto.sucursalId }, _sum: { cantidadActual: true } });
+      const libre = stock.stockActual.sub(_sum.cantidadActual ?? 0);
+      if (new D(dto.cantidad).gt(libre)) throw new BadRequestException(`Solo hay ${libre} sin lote registrado para este producto.`);
+      const n = await tx.lote.count({ where: { sucursalId: dto.sucursalId } });
+      return tx.lote.create({
+        data: {
+          codigo: dto.codigo?.trim() || `L-${n + 1}`,
+          itemId: dto.itemId,
+          sucursalId: dto.sucursalId,
+          origen: 'MANUAL',
+          fechaVencimiento: new Date(dto.fechaVencimiento),
+          cantidadInicial: dto.cantidad,
+          cantidadActual: dto.cantidad,
+        },
+      });
+    });
+  }
 
   /** Descuenta una salida de los lotes del ítem en la sucursal (FEFO) y deja el rastro. */
   static async consumir(

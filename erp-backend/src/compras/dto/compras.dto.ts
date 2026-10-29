@@ -68,6 +68,11 @@ export class LineaRecepcionDto {
   @Min(0.001)
   @Max(1_000_000)
   cantidad: number;
+
+  @ApiPropertyOptional({ description: 'Vencimiento del insumo recibido; crea un lote con esa fecha' })
+  @IsDateString({ strict: true })
+  @IsOptional()
+  fechaVencimiento?: string;
 }
 
 export class CreateRecepcionDto {
