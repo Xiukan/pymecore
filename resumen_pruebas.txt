@@ -1,14 +1,14 @@
 RESUMEN DE PRUEBAS — PYMECORE
-Fecha: 2026-11-17 22:17  ·  Commit: d7e3246
-Node v20.20.2 · pnpm 10.34.4 · PostgreSQL 16 (Docker)
+Fecha: 2026-11-18 01:29  ·  Commit: 26ec60b
+Node v24.18.0 · pnpm 11.10.0 · PostgreSQL 16 (Docker)
 
 Estado | Suite | Resultado | Duración
 PASA   | Escaneo de secretos (RNF-SEC-02) | RESULTADO: 0 hallazgo(s) en la versión actual | 0s
-PASA   | Backend unitarias (Jest) | Test Suites: 25 passed, 25 total Tests: 137 passed, 137 total | 5s
-PASA   | Backend integración (Jest + PostgreSQL) | Test Suites: 17 passed, 17 total Tests: 120 passed, 120 total | 45s
-PASA   | Frontend unitarias (Vitest) |  Test Files 14 passed (14)  Tests 43 passed (43) | 1s
-PASA   | Navegador (Playwright) |  24 passed (21.3s) | 23s
-PASA   | Rendimiento p95 de ventas (RNF-REN-01) | Benchmark ventas: 3×50 ventas (concurrencia 5, modo local, nube NO_CONFIGURADA) · p95 medio 201 ms ± 39 · peor p95 252 ms · meta ≤ 2000 ms → CUMPLE | 4s
+PASA   | Backend unitarias (Jest) | Test Suites: 25 passed, 25 total Tests: 137 passed, 137 total | 10s
+PASA   | Backend integración (Jest + PostgreSQL) | Test Suites: 17 passed, 17 total Tests: 121 passed, 121 total | 62s
+PASA   | Frontend unitarias (Vitest) |  Test Files 14 passed (14)  Tests 43 passed (43) | 3s
+PASA   | Navegador (Playwright) |  24 passed (30.4s) | 32s
+PASA   | Rendimiento p95 de ventas (RNF-REN-01) | Benchmark ventas: 3×50 ventas (concurrencia 5, modo local, nube NO_CONFIGURADA) · p95 medio 149 ms ± 45 · peor p95 212 ms · meta ≤ 2000 ms → CUMPLE | 3s
 
 RESULTADO GLOBAL: TODAS LAS SUITES PASAN
 
