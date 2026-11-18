@@ -70,7 +70,7 @@ Un ítem está terminado cuando cumple todo:
 
 | ID | Condición | Umbral | Método | Resultado |
 |---|---|---|---|---|
-| RNF-REN-01 | Ventas contra el local (`MODO=edge`) con la nube detenida, concurrencia 5, 3 corridas | p95 ≤ 2 s | `benchmark-ventas.mjs` contra `docker-compose.demo.yml` | p95 medio 161 ms ± 8, peor 172 ms (3×20 ventas, nube SIN_CONEXION tras D-02) |
+| RNF-REN-01 | Ventas contra el local (`MODO=edge`) con la nube detenida, concurrencia 5, 3 corridas | p95 ≤ 2 s | `benchmark-ventas.mjs` contra `docker-compose.demo.yml` | p95 medio 224 ms ± 102, peor 366 ms (3×20 ventas; el informe confirma «modo edge, nube SIN_CONEXION») |
 | RNF-REN-01 | Mismo benchmark en `ejecutar_pruebas.sh` (modo local) | p95 ≤ 2 s | Script de verificación | Ver `resumen_pruebas.txt` |
 | RNF-REN-02 / RNF-CON-01 | Ventas durante un corte; reconexión; reenvío del mismo lote | 100 % en la nube, 0 duplicados | `sync-nube.e2e-spec.ts` (20 ventas) y `humo-demo.sh` (contenedores reales) | 20/20 y 5/5, 0 duplicados |
 | RNF-SEC-02 | Archivos versionados (o copia sin git) | 0 hallazgos | `escanear-secretos.sh` | 0 hallazgos; historial con material del SII (R-01) |
