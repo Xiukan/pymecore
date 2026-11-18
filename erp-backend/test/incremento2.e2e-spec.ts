@@ -27,7 +27,10 @@ describe('Incremento 2: mermas por vencimiento y umbral por producto', () => {
     await ctx.http().patch('/empresa').set(auth(ctx.admin)).send({ diasAlertaVencimiento: 3 }).expect(200)
     await abrirCaja(ctx, ctx.admin)
   })
-  afterAll(() => cerrar(ctx))
+  afterAll(async () => {
+    await ctx.db.lote.updateMany({ where: { sucursalId: CASA_MATRIZ, itemId: { in: [semilla, fertilizante] } }, data: { cantidadActual: 0 } })
+    await cerrar(ctx)
+  })
 
   it('AC-09: dar de baja un lote vencido descuenta lote y stock y registra la merma a costo', async () => {
     const l = await lote(semilla, 4, -1)
