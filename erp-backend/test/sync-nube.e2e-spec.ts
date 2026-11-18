@@ -134,6 +134,16 @@ describe('sincronización real local → nube, SII y licencia', () => {
     await vender().expect(201)
   })
 
+  it('con la cola vacía y la nube caída, el local informa "sin conexión" (no un estado viejo)', async () => {
+    await ejecutar()
+    process.env.CLOUD_URL = 'http://127.0.0.1:1'
+    await ejecutar()
+    expect((await edge.http().get('/sync/estado').set(auth(edge.admin))).body).toMatchObject({ pendientes: 0, conectividad: 'SIN_CONEXION' })
+    process.env.CLOUD_URL = urlNube
+    await ejecutar()
+    expect((await edge.http().get('/sync/estado').set(auth(edge.admin))).body.conectividad).toBe('EN_LINEA')
+  })
+
   it('la nube exige credenciales de la instalación, suscripción activa y lotes válidos (DA-04)', async () => {
     const post = (headers: Record<string, string>, body: unknown) =>
       fetch(`${urlNube}/sync/lotes`, { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(body) })

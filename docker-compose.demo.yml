@@ -1,0 +1,54 @@
+# Demo reproducible del Incremento: local (Edge) y nube (Cloud) con bases separadas.
+#   docker compose -f docker-compose.demo.yml up --build
+# Interfaz del local: http://localhost:8001 (admin / admin1234) · nube: http://localhost:3100
+# Para simular un corte de internet:  docker compose -f docker-compose.demo.yml stop cloud
+# y para reconectar:                   docker compose -f docker-compose.demo.yml start cloud
+x-secretos: &secretos
+  JWT_SECRET: demo-secreto-jwt-0123456789abcdef0123456789
+  LEASE_SECRET: demo-secreto-licencia-0123456789abcdef
+  # Credenciales fijas de la instalación de demostración (solo para esta demo).
+  DEMO_INSTALACION_ID: 7d0b9a52-3c1e-4f6a-9d2b-5e8f1a4c0001
+  DEMO_INSTALACION_SECRETO: secreto-de-la-instalacion-demo
+
+services:
+  db-edge:
+    image: postgres:16-alpine
+    environment: { POSTGRES_USER: pyme, POSTGRES_PASSWORD: pyme, POSTGRES_DB: pyme_edge }
+    healthcheck: { test: ["CMD", "pg_isready", "-U", "pyme"], interval: 3s, retries: 20 }
+
+  db-cloud:
+    image: postgres:16-alpine
+    environment: { POSTGRES_USER: pyme, POSTGRES_PASSWORD: pyme, POSTGRES_DB: pyme_cloud }
+    healthcheck: { test: ["CMD", "pg_isready", "-U", "pyme"], interval: 3s, retries: 20 }
+
+  cloud:
+    build: ./erp-backend
+    environment:
+      <<: *secretos
+      MODO: cloud
+      DATABASE_URL: postgresql://pyme:pyme@db-cloud:5432/pyme_cloud
+      APP_PORT: "3000"
+    ports: ["3100:3000"]
+    depends_on: { db-cloud: { condition: service_healthy } }
+
+  edge:
+    build: ./erp-backend
+    environment:
+      <<: *secretos
+      MODO: edge
+      DATABASE_URL: postgresql://pyme:pyme@db-edge:5432/pyme_edge
+      APP_PORT: "3000"
+      CORS_ORIGIN: http://localhost:8001
+      CLOUD_URL: http://cloud:3000
+      INSTALACION_ID: 7d0b9a52-3c1e-4f6a-9d2b-5e8f1a4c0001
+      INSTALACION_SECRETO: secreto-de-la-instalacion-demo
+      SYNC_INTERVALO_MS: "10000"
+    ports: ["3000:3000"]
+    depends_on:
+      db-edge: { condition: service_healthy }
+      cloud: { condition: service_started }
+
+  web:
+    build: { context: ./erp-frontend, args: { VITE_API_URL: http://localhost:3000 } }
+    ports: ["8001:8001"]
+    depends_on: [edge]

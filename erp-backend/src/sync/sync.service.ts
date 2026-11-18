@@ -65,6 +65,13 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
     return datos;
   }
 
+  private async verificarNube() {
+    const n = this.nube();
+    if (!n) throw new Error('Nube no configurada');
+    const r = await fetch(`${n.url}/health`, { signal: AbortSignal.timeout(5_000) });
+    if (!r.ok) throw new Error(`La nube respondió ${r.status}`);
+  }
+
   /** Pide una licencia nueva a la nube y la guarda en el local. */
   async renovarLease() {
     const n = this.nube();
@@ -92,7 +99,11 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
       if (!lease || lease.venceEn.getTime() - Date.now() < RENOVAR_ANTES_MS) await this.renovarLease();
       for (;;) {
         const cola = await this.prisma.outboxSync.findMany({ where: { enviadoEn: null }, orderBy: { secuencia: 'asc' }, take: TAMANO_LOTE });
-        if (!cola.length) break;
+        if (!cola.length) {
+          // Sin nada que enviar igual se comprueba la nube: la conectividad informada debe ser real.
+          if (!enviadas) await this.verificarNube();
+          break;
+        }
         const ventas = await this.prisma.transaccion.findMany({
           where: { id: { in: cola.map((c) => c.ventaId) } },
           include: { detalles: { include: { item: { select: { nombre: true } } } }, entidad: { select: { rut: true } } },
