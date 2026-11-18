@@ -144,6 +144,28 @@ describe('sincronización real local → nube, SII y licencia', () => {
     expect((await edge.http().get('/sync/estado').set(auth(edge.admin))).body.conectividad).toBe('EN_LINEA')
   })
 
+  it('más de un lote de ventas sin folio no tapa la cola, y al cargar folios se envían', async () => {
+    // Las pruebas no cargan folios de factura (33): estas ventas nacen sin folio.
+    const factura = { tipoDocumento: 33, rutReceptor: '76543210-3', razonSocialReceptor: 'Distribuidora Demo Ltda' }
+    const sinFolio: string[] = []
+    for (let i = 0; i < 51; i++) sinFolio.push((await vender(factura).expect(201)).body.id)
+    const boleta = (await vender().expect(201)).body
+    expect(boleta.numeroFactura).toBeTruthy()
+
+    // La boleta, posterior a las 51 facturas sin folio, igual llega a la nube.
+    expect((await ejecutar()).enviadas).toBe(1)
+    expect((await edge.http().get('/sync/estado').set(auth(edge.admin))).body.pendientes).toBe(51)
+    expect((await ventasNube()).map((v) => v.id)).toContain(boleta.id)
+
+    // Llega un CAF nuevo: las ventas pendientes toman folio y se envían en la siguiente pasada.
+    await edge.db.folioDisponible.createMany({ data: Array.from({ length: 51 }, (_, i) => ({ tipoDoc: 33, numero: 900_001 + i })) })
+    expect((await ejecutar()).enviadas).toBe(51)
+    expect((await edge.http().get('/sync/estado').set(auth(edge.admin))).body.pendientes).toBe(0)
+    const ventas = await edge.db.transaccion.findMany({ where: { id: { in: sinFolio } } })
+    expect(ventas.every((v) => v.numeroFactura && Number(v.numeroFactura) > 900_000)).toBe(true)
+    expect(new Set(ventas.map((v) => v.numeroFactura)).size).toBe(51)
+  })
+
   it('la nube exige credenciales de la instalación, suscripción activa y lotes válidos (DA-04)', async () => {
     const post = (headers: Record<string, string>, body: unknown) =>
       fetch(`${urlNube}/sync/lotes`, { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(body) })

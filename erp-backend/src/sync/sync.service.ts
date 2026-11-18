@@ -97,23 +97,50 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
     try {
       const lease = await this.prisma.leaseToken.findUnique({ where: { instalacionId: process.env.INSTALACION_ID ?? '' } });
       if (!lease || lease.venceEn.getTime() - Date.now() < RENOVAR_ANTES_MS) await this.renovarLease();
+      // Ventas que en esta pasada siguen sin folio: se saltan para que no tapen la cola a las siguientes.
+      const omitidas: string[] = [];
       for (;;) {
-        const cola = await this.prisma.outboxSync.findMany({ where: { enviadoEn: null }, orderBy: { secuencia: 'asc' }, take: TAMANO_LOTE });
+        const cola = await this.prisma.outboxSync.findMany({
+          where: { enviadoEn: null, ...(omitidas.length && { id: { notIn: omitidas } }) },
+          orderBy: { secuencia: 'asc' },
+          take: TAMANO_LOTE,
+        });
         if (!cola.length) {
           // Sin nada que enviar igual se comprueba la nube: la conectividad informada debe ser real.
           if (!enviadas) await this.verificarNube();
           break;
         }
-        const ventas = await this.prisma.transaccion.findMany({
-          where: { id: { in: cola.map((c) => c.ventaId) } },
-          include: { detalles: { include: { item: { select: { nombre: true } } } }, entidad: { select: { rut: true } } },
-        });
+        const buscarVentas = () =>
+          this.prisma.transaccion.findMany({
+            where: { id: { in: cola.map((c) => c.ventaId) } },
+            include: { detalles: { include: { item: { select: { nombre: true } } } }, entidad: { select: { rut: true } } },
+          });
+        let ventas = await buscarVentas();
+        // Una venta que se hizo con el pool de folios vacío lo reintenta aquí (pudo cargarse un CAF nuevo).
+        const sinFolio = ventas.filter((v) => !v.numeroFactura);
+        if (sinFolio.length) {
+          const agotados = new Set<number>();
+          for (const v of sinFolio) {
+            const tipoDoc = tipoDocDe(v);
+            if (agotados.has(tipoDoc)) continue;
+            try {
+              if (!(await this.completarFolio(v.id))) agotados.add(tipoDoc); // el pool sigue vacío para este tipo
+            } catch (err) {
+              // Sin firma la venta igual tiene folio y viaja; la nube informa el estado del SII.
+              this.logger.warn(`Venta ${v.id} con folio pero sin DTE firmado: ${(err as Error).message}`);
+            }
+          }
+          ventas = await buscarVentas();
+        }
         const empresa = await this.empresa.get();
         const porId = new Map(ventas.map((v) => [v.id, v]));
         // Una venta sin folio espera en la cola hasta obtenerlo: el SII la rechazaría.
         const lote = cola.flatMap((c) => {
           const v = porId.get(c.ventaId);
-          if (!v || !v.numeroFactura) return [];
+          if (!v || !v.numeroFactura) {
+            omitidas.push(c.id);
+            return [];
+          }
           return [{
             ventaId: v.id,
             secuencia: c.secuencia,
@@ -123,7 +150,7 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
             dte: dteDeVenta(v, v.entidad?.rut ?? empresa.rutConsumidorFinal),
           }];
         });
-        if (!lote.length) break;
+        if (!lote.length) continue;
         let respuesta: { aceptadas: string[]; duplicadas: string[]; dte: { ventaId: string; estado: string; glosa: string | null }[] };
         try {
           respuesta = (await this.post('/sync/lotes', { lote })) as typeof respuesta;
@@ -144,7 +171,7 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
           }
         });
         enviadas += confirmadas.size;
-        if (confirmadas.size < cola.length) break;
+        if (confirmadas.size < lote.length) break;
       }
       this.conectividad = 'EN_LINEA';
       this.fallosSeguidos = 0;
@@ -284,15 +311,36 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
     }
 
     // Una venta sin folio nunca se marca sincronizada: primero obtiene uno del pool.
-    const tipoDoc = meta?.tipoDoc ?? 39;
+    const dte = await this.completarFolio(tx.id);
+    if (!dte) throw new SinFolioError();
+    if (dte.esMock) throw new Error('No se pudo firmar el DTE; revise certificado y CAF');
+
+    await new Promise((r) => setTimeout(r, 50));
+    this.logger.log(`[SIMULADO] DTE regenerado y enviado: folio=${dte.folio}`);
+  }
+
+  /**
+   * Asegura que la venta tenga folio (lo toma del pool si le falta) y deja su DTE firmado en
+   * metadatosSii. Devuelve null si el pool de su tipo de documento está vacío.
+   */
+  private async completarFolio(ventaId: string) {
+    const tx = await this.prisma.transaccion.findUniqueOrThrow({
+      where: { id: ventaId },
+      include: { detalles: { include: { item: true } }, entidad: true },
+    });
+    const tipoDoc = tipoDocDe(tx);
     let folio = tx.numeroFactura ? parseInt(tx.numeroFactura, 10) : null;
     if (!folio) {
-      folio = await this.prisma.$transaction((t) => reclamarFolio(t, tipoDoc, tx.id));
-      if (!folio) throw new SinFolioError();
-      await this.prisma.transaccion.update({ where: { id: tx.id }, data: { numeroFactura: String(folio) } });
+      // Folio y venta se actualizan juntos: un corte a mitad no deja un folio usado sin venta.
+      folio = await this.prisma.$transaction(async (t) => {
+        const numero = await reclamarFolio(t, tipoDoc, tx.id);
+        if (numero) await t.transaccion.update({ where: { id: tx.id }, data: { numeroFactura: String(numero) } });
+        return numero;
+      });
+      if (!folio) return null;
     }
 
-    const detalles = tx.detalles.map((d: any) => ({
+    const detalles = tx.detalles.map((d) => ({
       nombre: d.item?.nombre ?? 'Producto',
       cantidad: Number(d.cantidad),
       precio: Number(d.precioUnitario),
@@ -317,9 +365,11 @@ export class SyncService implements OnModuleInit, OnModuleDestroy {
       where: { id: tx.id },
       data: { metadatosSii: dte as any },
     });
-    if (dte.esMock) throw new Error('No se pudo firmar el DTE; revise certificado y CAF');
-
-    await new Promise((r) => setTimeout(r, 50));
-    this.logger.log(`[SIMULADO] DTE regenerado y enviado: folio=${dte.folio}`);
+    return dte;
   }
+}
+
+/** Tipo de documento con que se emitió la venta (39 boleta por defecto). */
+function tipoDocDe(v: { metadatosSii: unknown }): number {
+  return (v.metadatosSii as { tipoDoc?: number } | null)?.tipoDoc ?? 39;
 }
