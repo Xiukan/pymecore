@@ -1,0 +1,3 @@
+# Los scripts de shell deben tener saltos de línea LF en cualquier sistema (D-08):
+# con CRLF, bash en Windows falla al ejecutar ejecutar_pruebas.sh y los scripts de scripts/.
+*.sh text eol=lf
