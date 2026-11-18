@@ -108,15 +108,17 @@ export default function VentasPage() {
     })
   }, [sucursalId])
 
+  // F3 cobra con el estado actual (medio de pago, documento, cliente), no con el de cuando cambió el carrito.
+  const cobrarRef = useRef<() => void>(() => {})
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'F2') { e.preventDefault(); busquedaRef.current?.focus(); busquedaRef.current?.select() }
-      if (e.key === 'F3') { e.preventDefault(); if (lineas.length > 0) handleCobrar() }
+      if (e.key === 'F3') { e.preventDefault(); cobrarRef.current() }
       if (e.key === 'Escape') { e.preventDefault(); if (window.confirm('¿Vaciar la venta?')) setLineas([]) }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [lineas])
+  }, [])
 
   // Calcular DV mientras escribe
   const handleRutChange = (valor: string) => {
@@ -299,6 +301,7 @@ export default function VentasPage() {
       setLoading(false)
     }
   }
+  cobrarRef.current = () => { if (!loading) handleCobrar() }
 
   const descargarUltimoPdf = () => {
     if (!ultimaVenta) return
