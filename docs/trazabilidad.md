@@ -9,7 +9,7 @@ Fuente única que enlaza retroalimentación → decisión → requisito → prue
 | 9 y 10 (4) | AC-04 falló en el CI: sin certificado real, el DTE salía sin firma y el SII simulado rechazaba por "Firma o timbre inválidos". Playwright no corrió por depender de ese trabajo | Las pruebas firman con certificado y CAF sintéticos generados al vuelo; el CI ya no depende de secretos (D-01) | [`test/fixtures/certificados-sinteticos.ts`](../erp-backend/test/fixtures/certificados-sinteticos.ts), [`test/env.ts`](../erp-backend/test/env.ts); AC-04 pasa sin `sii-certs/` |
 | 6 (4) | Reproducir Edge → Cloud exigía configurar dos instancias a mano | `docker-compose.demo.yml` levanta dos bases, nube, local e interfaz con credenciales de demo; prueba de humo | [`docker-compose.demo.yml`](../docker-compose.demo.yml), [`scripts/humo-demo.sh`](../scripts/humo-demo.sh) |
 | 11 (4) | p95 medido en modo local, una sola corrida | Benchmark repetido (media ± desviación, peor p95) y ejecutable contra el local con la nube detenida; informa modo y conectividad reales (D-02) | [`scripts/benchmark-ventas.mjs`](../erp-backend/scripts/benchmark-ventas.mjs), sección 6 |
-| 12 (4) | Escaneo dependía de git; historial con material del SII | El escaneo funciona sin `.git` (copia o ZIP) y declara que el historial no es verificable; el historial sigue pendiente (R-01) | [`scripts/escanear-secretos.sh`](../scripts/escanear-secretos.sh) |
+| 12 (4) | Escaneo dependía de git; historial con material del SII | El escaneo funciona sin `.git` (copia o ZIP) y declara que el historial no es verificable; el material del historial es un certificado de pruebas sin validez tributaria (R-01, riesgo aceptado) | [`scripts/escanear-secretos.sh`](../scripts/escanear-secretos.sh) |
 | 3 (4) | README mezclaba módulos heredados con la versión candidata | README separa Incremento 1, Incremento 2 y código heredado (apagado por defecto) | [`README.md`](../README.md#qué-es-la-versión-candidata-y-qué-es-código-heredado) |
 | 2 y 15 (4) | H-01 sin medición de mermas; H-02 sin evidencia de pago | El Incremento 2 construye el instrumento de medición de H-01 (perdido vs salvado). H-01 y H-02 se declaran **no validadas** hasta medir en el local piloto | Sección 2 |
 | 4 y 13 (4) | Spikes sin cierre; presentación con estados "Planificada" | Cierre de spikes (sección 8) y estados reales por criterio (sección 4) | Este documento |
@@ -73,7 +73,7 @@ Un ítem está terminado cuando cumple todo:
 | RNF-REN-01 | Ventas contra el local (`MODO=edge`) con la nube detenida, concurrencia 5, 3 corridas | p95 ≤ 2 s | `benchmark-ventas.mjs` contra `docker-compose.demo.yml` | p95 medio 224 ms ± 102, peor 366 ms (3×20 ventas; el informe confirma «modo edge, nube SIN_CONEXION») |
 | RNF-REN-01 | Mismo benchmark en `ejecutar_pruebas.sh` (modo local) | p95 ≤ 2 s | Script de verificación | Ver `resumen_pruebas.txt` |
 | RNF-REN-02 / RNF-CON-01 | Ventas durante un corte; reconexión; reenvío del mismo lote | 100 % en la nube, 0 duplicados | `sync-nube.e2e-spec.ts` (20 ventas) y `humo-demo.sh` (contenedores reales) | 20/20 y 5/5, 0 duplicados |
-| RNF-SEC-02 | Archivos versionados (o copia sin git) | 0 hallazgos | `escanear-secretos.sh` | 0 hallazgos; historial con material del SII (R-01) |
+| RNF-SEC-02 | Archivos versionados (o copia sin git) | 0 hallazgos | `escanear-secretos.sh` | 0 hallazgos; el historial conserva un certificado de pruebas, sin validez tributaria (R-01, aceptado) |
 
 **Limitación declarada:** no se ejecutó un ensayo continuo de 30 minutos de corte; la prueba de corte usa desconexión simulada (integración) y detención real del contenedor de la nube (humo), sin duración prolongada.
 
@@ -92,7 +92,7 @@ Un ítem está terminado cuando cumple todo:
 - **Alternativas:** rutas y clave en `.env` vs certificado en base64 dentro de una variable.
 - **Resultado:** se adoptaron rutas en `.env` (`SII_CAF_PATH`, `SII_P12_PATH`, `SII_P12_PASSWORD`). El firmado funciona con material real y con material sintético (pruebas y demo). El escaneo da 0 hallazgos en la versión actual.
 - **Decisión (DEC-06):** confirma ADR-03.
-- **Pendiente (R-01):** rotar la contraseña expuesta y reescribir el historial; requiere acuerdo del equipo porque obliga a todos a reclonar.
+- **R-01 (riesgo aceptado):** el historial conserva un certificado **de pruebas** del SII y su contraseña. No permite emitir documentos tributarios reales, por lo que no se reescribe el historial (obligaría a todos a reclonar y cambiaría los hashes de la versión candidata). Mitigación: la versión actual no contiene secretos (escaneo con 0 hallazgos), las pruebas usan certificados sintéticos y el certificado real de producción nunca se versiona (`.gitignore` y escaneo en CI). Cierre: limpiar el historial antes de publicar el repositorio o de usar un certificado real.
 
 **SPIKE-03 — outbox idempotente.**
 - **Alternativas:** orden por marca de tiempo vs secuencia local con la hora como dato informativo.
@@ -108,7 +108,7 @@ Un ítem está terminado cuando cumple todo:
 
 | ID | Tipo | Estado |
 |---|---|---|
-| R-01 | Seguridad | Material del SII en el historial de git y contraseña expuesta sin rotar. Pendiente de decisión del equipo |
+| R-01 | Seguridad | Certificado de pruebas del SII y su contraseña en el historial de git. **Aceptado:** sin validez tributaria; la versión actual no tiene secretos. Se limpia el historial antes de usar un certificado real o publicar el repo |
 | R-02 | Producto | H-01 y H-02 no validadas: falta medición en el local piloto y entrevistas |
 | R-03 | Técnico | Un solo local por PYME; conflictos entre locales fuera de alcance (PBI-09) |
 | R-04 | Legal | SII simulado; certificación en el ambiente de pruebas del SII pendiente |
