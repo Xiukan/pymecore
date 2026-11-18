@@ -1,193 +1,442 @@
 import {
   BadRequestException,
+  ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { TipoTransaccion } from '@prisma/client';
+import { createHash } from 'crypto';
+import { isUUID } from 'class-validator';
+import { Item, MedioPago, Prisma, TipoTransaccion } from '@prisma/client';
+import { CajaService } from '../caja/caja.service';
+import { CuentasService } from '../cuentas/cuentas.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { EmpresaService } from '../empresa/empresa.service';
 import { SiiIntegrationService } from '../sii/sii-integration.service';
+import { reclamarFolio } from '../utils/folios.util';
+import { exigirPeriodoAbierto } from '../utils/periodos';
+import { LotesService } from '../lotes/lotes.service';
+import { preciosVigentes } from '../precios/precios';
+import { exigirLease } from '../lease/lease';
+import { TX_OPCIONES } from '../utils/transacciones';
+import { calcularDocumento, dec, peso, share, ZERO } from '../utils/money.util';
 import { CreateTransactionDto } from './dto/create-transaction.dto';
 
-const IVA_RATE = 0.19;
+type Tx = Prisma.TransactionClient;
+
+const RETORNOS: TipoTransaccion[] = [TipoTransaccion.DEVOLUCION, TipoTransaccion.NOTA_CREDITO];
+const OPERACION = 'transactions.create:v1';
+const MEDIOS_VENTA: MedioPago[] = [MedioPago.Efectivo, MedioPago.Tarjeta, MedioPago.Transferencia, MedioPago.Credito];
+
+/** JSON con claves ordenadas: el mismo contenido produce siempre la misma huella. */
+function canonico(valor: unknown): string {
+  if (Array.isArray(valor)) return `[${valor.map(canonico).join(',')}]`;
+  if (valor && typeof valor === 'object') {
+    return `{${Object.keys(valor)
+      .filter((k) => (valor as Record<string, unknown>)[k] !== undefined)
+      .sort()
+      .map((k) => `${JSON.stringify(k)}:${canonico((valor as Record<string, unknown>)[k])}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(valor);
+}
+
+const esConflictoIdempotencia = (err: unknown) =>
+  err instanceof Prisma.PrismaClientKnownRequestError &&
+  err.code === 'P2002' &&
+  JSON.stringify(err.meta ?? {}).includes('clave');
+
+interface LineaPreparada {
+  itemId: string;
+  cantidad: Prisma.Decimal;
+  costoUnitario: Prisma.Decimal;
+  precioUnitario: Prisma.Decimal;
+  descuentoLinea: Prisma.Decimal;
+  montoIva: Prisma.Decimal;
+  subtotal: Prisma.Decimal;
+}
+
+/** MntNeto e IVA del DTE a partir del IVA ya repartido en las líneas. */
+export function desglose(t: { montoTotal: Prisma.Decimal; detalles: { montoIva: Prisma.Decimal }[] }) {
+  const iva = t.detalles.reduce((s, d) => s.add(d.montoIva), ZERO);
+  return { iva: Number(iva), montoNeto: Number(t.montoTotal.sub(iva)) };
+}
 
 @Injectable()
 export class TransactionsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly sii: SiiIntegrationService,
+    private readonly empresa: EmpresaService,
   ) {}
 
-  async create(dto: CreateTransactionDto) {
+  /**
+   * Con `clave` (cabecera Idempotency-Key) un reintento devuelve el documento ya creado
+   * en vez de cobrar y descontar stock otra vez.
+   */
+  async create(dto: CreateTransactionDto, usuarioId: string, clave?: string, rol = 'Administrador') {
+    if (clave === undefined) return this.registrar(dto, usuarioId, undefined, rol);
+    if (!isUUID(clave)) throw new BadRequestException('Idempotency-Key debe ser un UUID.');
+    const huella = createHash('sha256').update(canonico({ ...dto, usuarioId: undefined })).digest('hex');
+
+    const previa = await this.repetida(usuarioId, clave, huella);
+    if (previa) return previa;
+    try {
+      return await this.registrar(dto, usuarioId, { clave, huella }, rol);
+    } catch (err) {
+      // Otra petición con la misma clave ganó la reserva: se devuelve su resultado.
+      if (esConflictoIdempotencia(err)) {
+        const ganadora = await this.repetida(usuarioId, clave, huella);
+        if (ganadora) return ganadora;
+      }
+      throw err;
+    }
+  }
+
+  private async repetida(usuarioId: string, clave: string, huella: string) {
+    const op = await this.prisma.operacionIdempotente.findUnique({
+      where: { usuarioId_operacion_clave: { usuarioId, operacion: OPERACION, clave } },
+    });
+    if (!op) return null;
+    if (op.huella !== huella) {
+      throw new ConflictException('Este envío ya se usó con otros datos. Revise la operación original.');
+    }
+    const t = await this.prisma.transaccion.findUniqueOrThrow({
+      where: { id: op.transaccionId! },
+      include: { detalles: true },
+    });
+    const meta = t.metadatosSii as Record<string, unknown> | null;
+    const dte = meta?.xmlFirmado ? meta : null;
+    return { ...t, dte, pendiente: !dte, folio: t.numeroFactura ? Number(t.numeroFactura) : undefined, repetida: true };
+  }
+
+  private async registrar(
+    dto: CreateTransactionDto,
+    usuarioId: string,
+    idem?: { clave: string; huella: string },
+    rol = 'Administrador',
+  ) {
     const itemIds = dto.detalles.map((d) => d.itemId);
+    if (new Set(itemIds).size !== itemIds.length) {
+      throw new BadRequestException('El documento repite un ítem; agrupe las cantidades en una sola línea.');
+    }
+    if (dto.pagos) {
+      if (dto.tipoTransaccion !== TipoTransaccion.VENTA) throw new BadRequestException('Solo una venta se paga con varios medios.');
+      if (new Set(dto.pagos.map((p) => p.medioPago)).size !== dto.pagos.length) {
+        throw new BadRequestException('Cada medio de pago va una sola vez.');
+      }
+      // El medio principal (el de mayor monto) queda en la venta para listados y filtros.
+      dto.medioPago = [...dto.pagos].sort((a, b) => b.monto - a.monto)[0].medioPago;
+    }
+    if (dto.tipoTransaccion === TipoTransaccion.VENTA && !MEDIOS_VENTA.includes(dto.medioPago as MedioPago)) {
+      throw new BadRequestException('Indique el medio de pago de la venta (efectivo, tarjeta, transferencia o crédito).');
+    }
+    if (dto.tipoTransaccion === TipoTransaccion.COMPRA) {
+      throw new BadRequestException('Las compras se registran en el módulo de Compras (orden, recepción y factura).');
+    }
+    if (dto.tipoTransaccion === TipoTransaccion.MERMA && !dto.motivoMerma?.trim()) {
+      throw new BadRequestException('Indique el motivo de la merma.');
+    }
+    const esRetorno = RETORNOS.includes(dto.tipoTransaccion);
+    if (esRetorno && !dto.transaccionOrigenId) {
+      throw new BadRequestException('Las devoluciones y notas de crédito requieren la venta de origen.');
+    }
 
     const items = await this.prisma.item.findMany({
-      where: { id: { in: itemIds }, estado: 'Activo' },
+      where: { id: { in: itemIds }, ...(esRetorno ? {} : { estado: 'Activo' }) },
     });
-
     if (items.length !== itemIds.length) {
       throw new NotFoundException('Uno o más ítems no existen o están inactivos');
     }
-
     const itemMap = new Map(items.map((i) => [i.id, i]));
-
-    const detallesCalculados = dto.detalles.map((d) => {
-      const item = itemMap.get(d.itemId)!;
-      const precio = Number(d.precioUnitario);
-      const descLinea = parseFloat((d.descuentoLinea ?? 0).toFixed(2));
-      const baseLinea = precio * d.cantidad - descLinea;
-      const iva = item.afectoIva ? parseFloat((baseLinea * IVA_RATE).toFixed(2)) : 0;
-      const subtotal = parseFloat((baseLinea + iva).toFixed(2));
-
-      return {
-        itemId: d.itemId,
-        cantidad: d.cantidad,
-        costoUnitario: Number(item.costoPromedio),
-        precioUnitario: precio,
-        montoIva: iva,
-        descuentoLinea: descLinea,
-        subtotal,
-      };
-    });
-
-    const subtotalBruto = detallesCalculados.reduce((acc, d) => acc + d.subtotal, 0);
-    const descGlobal = parseFloat((dto.descuentoGlobal ?? 0).toFixed(2));
-    const montoTotal = parseFloat((subtotalBruto - descGlobal).toFixed(2));
+    const empresa = await this.empresa.get();
+    await exigirPeriodoAbierto(this.prisma, new Date());
+    if (dto.tipoTransaccion === TipoTransaccion.VENTA) await exigirLease(this.prisma);
 
     const transaccion = await this.prisma.$transaction(async (tx) => {
-      if (
-        dto.tipoTransaccion === TipoTransaccion.VENTA ||
-        dto.tipoTransaccion === TipoTransaccion.MERMA
-      ) {
-        for (const d of dto.detalles) {
-          const stock = await tx.stockLocal.findUnique({
-            where: { sucursalId_itemId: { sucursalId: dto.sucursalId, itemId: d.itemId } },
-          });
-          if (!stock) throw new NotFoundException(`Sin registro de stock para el ítem ${d.itemId}`);
-          if (Number(stock.stockActual) < d.cantidad) {
-            const item = itemMap.get(d.itemId)!;
-            throw new BadRequestException(
-              `Stock insuficiente para "${item.nombre}". Disponible: ${stock.stockActual}`,
-            );
-          }
-          await tx.stockLocal.update({
-            where: { sucursalId_itemId: { sucursalId: dto.sucursalId, itemId: d.itemId } },
-            data: { stockActual: { decrement: d.cantidad } },
+      // La reserva va primero: una segunda petición con la misma clave espera aquí y luego falla por unicidad.
+      if (idem) {
+        await tx.operacionIdempotente.create({
+          data: { usuarioId, operacion: OPERACION, clave: idem.clave, huella: idem.huella },
+        });
+      }
+      // Caja: toda venta y todo reembolso en efectivo quedan en la sesión abierta del cajero.
+      const mueveCaja = dto.tipoTransaccion === TipoTransaccion.VENTA || (esRetorno && dto.medioPago === 'Efectivo');
+      const sesionCajaId = await CajaService.sesionParaMovimiento(tx, usuarioId, dto.sucursalId);
+      if (mueveCaja && !sesionCajaId) {
+        throw new BadRequestException('Abra la caja en esta sucursal antes de cobrar o reembolsar en efectivo.');
+      }
+
+      const lineas = esRetorno
+        ? await this.prepararRetorno(tx, dto, usuarioId, rol)
+        : await this.prepararDocumento(tx, dto, itemMap, empresa.tasaIva);
+
+      if (dto.tipoTransaccion === TipoTransaccion.VENTA || dto.tipoTransaccion === TipoTransaccion.MERMA) {
+        for (const l of lineas) await this.descontarStock(tx, dto.sucursalId, l, itemMap.get(l.itemId)!);
+      }
+      if (esRetorno) {
+        for (const l of lineas) {
+          await tx.stockLocal.upsert({
+            where: { sucursalId_itemId: { sucursalId: dto.sucursalId, itemId: l.itemId } },
+            update: { stockActual: { increment: l.cantidad } },
+            create: { sucursalId: dto.sucursalId, itemId: l.itemId, stockActual: l.cantidad },
           });
         }
       }
 
-      if (
-        dto.tipoTransaccion === TipoTransaccion.DEVOLUCION ||
-        dto.tipoTransaccion === TipoTransaccion.NOTA_CREDITO
-      ) {
-        for (const d of dto.detalles) {
-          const existing = await tx.stockLocal.findUnique({
-            where: { sucursalId_itemId: { sucursalId: dto.sucursalId, itemId: d.itemId } },
-          });
-          if (existing) {
-            await tx.stockLocal.update({
-              where: { sucursalId_itemId: { sucursalId: dto.sucursalId, itemId: d.itemId } },
-              data: { stockActual: { increment: d.cantidad } },
-            });
-          } else {
-            await tx.stockLocal.create({
-              data: { sucursalId: dto.sucursalId, itemId: d.itemId, stockActual: d.cantidad },
-            });
-          }
-        }
+      const montoTotal = lineas.reduce((s, l) => s.add(l.subtotal), ZERO);
+      if (dto.pagos && !dto.pagos.reduce((s, p) => s.add(p.monto), ZERO).eq(montoTotal)) {
+        throw new BadRequestException(`Los medios de pago deben sumar el total de la venta ($${montoTotal}).`);
       }
-
-      return tx.transaccion.create({
+      if (dto.medioPago === MedioPago.Credito) await this.validarCredito(tx, dto, montoTotal);
+      const esVenta = dto.tipoTransaccion === TipoTransaccion.VENTA;
+      const tipoDoc = dto.tipoDocumento ?? 39;
+      const creada = await tx.transaccion.create({
         data: {
           sucursalId: dto.sucursalId,
-          usuarioId: dto.usuarioId,
+          usuarioId,
           entidadId: dto.entidadId,
           tipoTransaccion: dto.tipoTransaccion,
           medioPago: dto.medioPago,
-          descuentoGlobal: descGlobal,
+          descuentoGlobal: esRetorno ? ZERO : peso(dto.descuentoGlobal ?? 0),
           montoTotal,
+          // Una venta queda pendiente de SII hasta que su DTE se envía; nunca nace sincronizada.
+          sincronizacion: esVenta ? 'PENDIENTE' : 'SINCRONIZADO',
+          estadoDte: esVenta ? 'PENDIENTE_ENVIO_SII' : null,
           transaccionOrigenId: dto.transaccionOrigenId,
+          sesionCajaId: mueveCaja ? sesionCajaId : null,
           tipoDevolucion: dto.tipoDevolucion,
           observaciones: dto.observaciones,
-          motivoMerma: (dto as any).motivoMerma,
-          detalles: { createMany: { data: detallesCalculados } },
+          motivoMerma: dto.motivoMerma,
+          detalles: { createMany: { data: lineas } },
+          ...(dto.pagos && { pagos: { createMany: { data: dto.pagos.map((p) => ({ medioPago: p.medioPago, monto: p.monto })) } } }),
         },
         include: { detalles: true },
       });
-    });
-
-    if (dto.tipoTransaccion === TipoTransaccion.VENTA) {
-      const tipoDoc = dto.tipoDocumento ?? 39;
-
-      // Reclamar folio del pool atómicamente
-      const folioRow = await this.prisma.folioDisponible.findFirst({
-        where: { tipoDoc, usado: false },
-        orderBy: { numero: 'asc' },
-      });
-
-      if (!folioRow) {
-        // Sin folios disponibles: guardamos con sincronizacion PENDIENTE y folio 0 (se asignará al sincronizar)
-        await this.prisma.transaccion.update({
-          where: { id: transaccion.id },
-          data: { sincronizacion: 'PENDIENTE', metadatosSii: { sinFolio: true, tipoDoc } as any },
-        });
-        return { ...transaccion, dte: null, pendiente: true };
+      // La venta y su lugar en la cola de envío a la nube nacen en la misma transacción.
+      if (esVenta) await tx.outboxSync.create({ data: { ventaId: creada.id } });
+      for (const l of lineas) {
+        if (esVenta || dto.tipoTransaccion === TipoTransaccion.MERMA) {
+          await LotesService.consumir(tx, dto.sucursalId, l.itemId, l.cantidad, { tipo: dto.tipoTransaccion, transaccionId: creada.id });
+        } else if (esRetorno) {
+          await LotesService.restaurarDevolucion(tx, dto.transaccionOrigenId!, l.itemId, l.cantidad, creada.id);
+        }
       }
+      if (idem) {
+        await tx.operacionIdempotente.update({
+          where: { usuarioId_operacion_clave: { usuarioId, operacion: OPERACION, clave: idem.clave } },
+          data: { transaccionId: creada.id },
+        });
+      }
+      if (!esVenta) return { creada, folio: null as number | null, tipoDoc };
 
-      await this.prisma.folioDisponible.update({
-        where: { id: folioRow.id },
-        data: { usado: true, usadoEn: new Date(), transaccionId: transaccion.id },
-      });
+      const folio = await reclamarFolio(tx, tipoDoc, creada.id);
+      if (folio === null) {
+        await tx.transaccion.update({
+          where: { id: creada.id },
+          data: { metadatosSii: { sinFolio: true, tipoDoc } },
+        });
+      } else {
+        await tx.transaccion.update({ where: { id: creada.id }, data: { numeroFactura: String(folio) } });
+      }
+      return { creada, folio, tipoDoc };
+    }, TX_OPCIONES);
 
-      const detallesDte = dto.detalles.map((d) => {
-        const item = itemMap.get(d.itemId)!;
-        return {
-          nombre: item.nombre,
-          cantidad: d.cantidad,
+    const { creada, folio, tipoDoc } = transaccion;
+    if (dto.tipoTransaccion !== TipoTransaccion.VENTA) return creada;
+    if (folio === null) return { ...creada, dte: null, pendiente: true };
+
+    let dte: Awaited<ReturnType<SiiIntegrationService['emitirDTE']>>;
+    try {
+      dte = this.sii.emitirDTE({
+        folio,
+        tipoDoc,
+        emisor: empresa,
+        rutReceptor: dto.rutReceptor ?? empresa.rutConsumidorFinal,
+        razonSocialReceptor: dto.razonSocialReceptor ?? empresa.nombreConsumidorFinal,
+        fechaEmision: new Date().toISOString().substring(0, 10),
+        montoTotal: Number(creada.montoTotal),
+        ...desglose(creada),
+        primerItem: itemMap.get(creada.detalles[0]?.itemId)?.nombre ?? 'Item',
+        detalles: creada.detalles.map((d) => ({
+          nombre: itemMap.get(d.itemId)?.nombre ?? 'Item',
+          cantidad: Number(d.cantidad),
           precio: Number(d.precioUnitario),
-          subtotal: Number(d.precioUnitario) * d.cantidad,
-        };
+          subtotal: Number(d.subtotal),
+        })),
       });
-
-      let dte: any;
-      try {
-        dte = this.sii.emitirDTE({
-          folio: folioRow.numero,
-          tipoDoc,
-          rutEmisor: '76.000.000-1',
-          rutReceptor: dto.rutReceptor ?? '66.666.666-6',
-          razonSocialReceptor: dto.razonSocialReceptor ?? 'CLIENTE FINAL',
-          fechaEmision: new Date().toISOString().substring(0, 10),
-          montoTotal,
-          primerItem: detallesDte[0]?.nombre ?? 'Item',
-          detalles: detallesDte,
-        });
-      } catch {
-        // Sin conexión o falla DTE: marcamos PENDIENTE con folio reservado
-        await this.prisma.transaccion.update({
-          where: { id: transaccion.id },
-          data: {
-            sincronizacion: 'PENDIENTE',
-            numeroFactura: String(folioRow.numero),
-            metadatosSii: { folio: folioRow.numero, tipoDoc, esMock: true, pendienteDte: true } as any,
-          },
-        });
-        return { ...transaccion, dte: null, pendiente: true, folio: folioRow.numero };
-      }
-
+    } catch {
       await this.prisma.transaccion.update({
-        where: { id: transaccion.id },
-        data: {
-          numeroFactura: String(dte.folio),
-          sincronizacion: 'PENDIENTE',
-          metadatosSii: dte as any,
-        },
+        where: { id: creada.id },
+        data: { metadatosSii: { folio, tipoDoc, pendienteDte: true } },
       });
-
-      return { ...transaccion, dte };
+      return { ...creada, numeroFactura: String(folio), dte: null, pendiente: true, folio };
     }
 
-    return transaccion;
+    await this.prisma.transaccion.update({
+      where: { id: creada.id },
+      data: { metadatosSii: dte as any },
+    });
+    return { ...creada, numeroFactura: String(folio), dte };
+  }
+
+  /**
+   * Crédito: la venta exige un cliente con cupo disponible; la devolución imputada a la deuda
+   * solo cabe sobre una venta a crédito y hasta su saldo. El bloqueo del cliente impide que
+   * dos ventas simultáneas sobrepasen el cupo.
+   */
+  private async validarCredito(tx: Tx, dto: CreateTransactionDto, monto: Prisma.Decimal) {
+    if (dto.tipoTransaccion === TipoTransaccion.VENTA) {
+      if (!dto.entidadId) throw new BadRequestException('La venta a crédito requiere identificar al cliente.');
+      await tx.$queryRaw`SELECT id FROM entidades WHERE id = ${dto.entidadId}::uuid FOR UPDATE`;
+      const cliente = await tx.entidad.findUnique({ where: { id: dto.entidadId } });
+      if (!cliente || cliente.cupoCredito.lte(0)) throw new BadRequestException('El cliente no tiene crédito habilitado.');
+      const deuda = await CuentasService.deudaCliente(tx, cliente.id);
+      if (deuda.add(monto).gt(cliente.cupoCredito)) {
+        throw new BadRequestException(
+          `La venta supera el cupo de crédito: cupo $${cliente.cupoCredito}, deuda actual $${deuda}, venta $${monto}.`,
+        );
+      }
+      return;
+    }
+    const origen = await tx.transaccion.findUniqueOrThrow({ where: { id: dto.transaccionOrigenId } });
+    if (origen.medioPago !== MedioPago.Credito) {
+      throw new BadRequestException('Solo una venta a crédito admite rebajar la deuda; reembolse con el medio correspondiente.');
+    }
+    const saldo = await CuentasService.saldoVenta(tx, origen.id);
+    if (monto.gt(saldo)) {
+      throw new BadRequestException(`La devolución supera el saldo adeudado ($${saldo}); reembolse la diferencia con otro medio.`);
+    }
+  }
+
+  /** Venta: precio vigente del servidor. Merma: valorizada a costo. */
+  private async prepararDocumento(
+    tx: Tx,
+    dto: CreateTransactionDto,
+    itemMap: Map<string, Item>,
+    tasaIva: Prisma.Decimal,
+  ) {
+    const vigentes =
+      dto.tipoTransaccion === TipoTransaccion.VENTA ? await preciosVigentes(tx, [...itemMap.values()], dto.entidadId) : new Map<string, Prisma.Decimal>();
+
+    const base = dto.detalles.map((d) => {
+      const item = itemMap.get(d.itemId)!;
+      let precio: Prisma.Decimal;
+      if (dto.tipoTransaccion === TipoTransaccion.VENTA) {
+        precio = vigentes.get(item.id) ?? item.precioVenta;
+        if (d.precioUnitario !== undefined && !dec(d.precioUnitario).eq(precio)) {
+          throw new BadRequestException(
+            `El precio de "${item.nombre}" cambió a $${precio.toString()}. Actualice el carrito antes de cobrar.`,
+          );
+        }
+      } else {
+        precio = item.costoPromedio;
+      }
+      return { item, cantidad: dec(d.cantidad), precio, descuento: dec(d.descuentoLinea ?? 0) };
+    });
+
+    const calculo = this.calcular(
+      base.map((b) => ({
+        cantidad: b.cantidad,
+        precioUnitario: b.precio,
+        descuentoLinea: b.descuento,
+        afectoIva: dto.tipoTransaccion !== TipoTransaccion.MERMA && b.item.afectoIva,
+      })),
+      dto.descuentoGlobal ?? 0,
+      tasaIva,
+    );
+    if (dto.tipoTransaccion === TipoTransaccion.VENTA && calculo.montoTotal.lte(0)) {
+      throw new BadRequestException('El total de la venta debe ser mayor a cero.');
+    }
+    return base.map<LineaPreparada>((b, i) => ({
+      itemId: b.item.id,
+      cantidad: b.cantidad,
+      costoUnitario: b.item.costoPromedio,
+      precioUnitario: b.precio,
+      ...calculo.detalle[i],
+    }));
+  }
+
+  /** Devolución / NC: contra líneas reales de la venta, sin superar lo vendido ni su monto. */
+  private async prepararRetorno(tx: Tx, dto: CreateTransactionDto, usuarioId: string, rol: string) {
+    // Serializa los retornos concurrentes de una misma venta.
+    await tx.$queryRaw`SELECT id FROM transacciones WHERE id = ${dto.transaccionOrigenId}::uuid FOR UPDATE`;
+    const origen = await tx.transaccion.findUnique({
+      where: { id: dto.transaccionOrigenId },
+      include: { detalles: true },
+    });
+    if (!origen || origen.tipoTransaccion !== TipoTransaccion.VENTA || origen.estado !== 'Activa') {
+      throw new BadRequestException('La venta de origen no existe o no está activa.');
+    }
+    if (origen.sucursalId !== dto.sucursalId) {
+      throw new BadRequestException('La devolución debe registrarse en la sucursal de la venta.');
+    }
+    // Separación de funciones: quien cobró no se autoriza a sí mismo el reembolso.
+    if (rol === 'Vendedor' && origen.usuarioId === usuarioId) {
+      throw new ForbiddenException('La devolución de tu propia venta debe registrarla otro usuario o un Encargado.');
+    }
+
+    const previos = await tx.transaccionDetalle.groupBy({
+      by: ['itemId'],
+      where: {
+        transaccion: {
+          transaccionOrigenId: origen.id,
+          estado: 'Activa',
+          tipoTransaccion: { in: RETORNOS },
+        },
+      },
+      _sum: { cantidad: true, subtotal: true, montoIva: true },
+    });
+    const devuelto = new Map(previos.map((p) => [p.itemId, p._sum]));
+
+    return dto.detalles.map<LineaPreparada>((d) => {
+      const linea = origen.detalles.find((o) => o.itemId === d.itemId);
+      if (!linea) throw new BadRequestException('Hay ítems que no pertenecen a la venta de origen.');
+      const ya = devuelto.get(d.itemId);
+      const qtyRestante = linea.cantidad.sub(ya?.cantidad ?? ZERO);
+      const cantidad = dec(d.cantidad);
+      if (cantidad.gt(qtyRestante)) {
+        throw new BadRequestException(
+          `No se puede devolver ${cantidad} unidades: vendidas ${linea.cantidad}, ya devueltas ${ya?.cantidad ?? 0}.`,
+        );
+      }
+      const subtotalRestante = linea.subtotal.sub(ya?.subtotal ?? ZERO);
+      const ivaRestante = linea.montoIva.sub(ya?.montoIva ?? ZERO);
+      return {
+        itemId: linea.itemId,
+        cantidad,
+        costoUnitario: linea.costoUnitario,
+        precioUnitario: linea.precioUnitario,
+        descuentoLinea: share(linea.descuentoLinea, cantidad, linea.cantidad),
+        montoIva: share(ivaRestante, cantidad, qtyRestante),
+        subtotal: share(subtotalRestante, cantidad, qtyRestante),
+      };
+    });
+  }
+
+  private calcular(...args: Parameters<typeof calcularDocumento>) {
+    try {
+      return calcularDocumento(...args);
+    } catch (err) {
+      if (err instanceof RangeError) throw new BadRequestException(err.message);
+      throw err;
+    }
+  }
+
+  /** Descuento condicionado: nunca deja stock negativo aunque lleguen ventas simultáneas. */
+  private async descontarStock(tx: Tx, sucursalId: string, linea: LineaPreparada, item: Item) {
+    const { count } = await tx.stockLocal.updateMany({
+      where: { sucursalId, itemId: linea.itemId, stockActual: { gte: linea.cantidad } },
+      data: { stockActual: { decrement: linea.cantidad } },
+    });
+    if (count === 1) return;
+    const stock = await tx.stockLocal.findUnique({
+      where: { sucursalId_itemId: { sucursalId, itemId: linea.itemId } },
+    });
+    if (!stock) throw new NotFoundException(`Sin registro de stock para el ítem ${item.nombre}`);
+    throw new BadRequestException(
+      `Stock insuficiente para "${item.nombre}". Disponible: ${stock.stockActual}`,
+    );
   }
 
   findAll(sucursalId?: string) {

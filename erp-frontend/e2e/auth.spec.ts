@@ -12,8 +12,8 @@ test.describe('Autenticación', () => {
     await page.getByLabel('Contraseña').fill('vend1234')
     await page.getByRole('button', { name: 'Ingresar' }).click()
 
-    await expect(page.getByText('Ventas del periodo')).toBeVisible()
-    await expect(page.getByText('Ventas del periodo')).toBeVisible()
+    await expect(page.getByText('¿Qué quieres hacer?')).toBeVisible()
+    await expect(page.getByText('¿Qué quieres hacer?')).toBeVisible()
   })
 
   test('vendedor puede navegar al POS desde el menú', async ({ page }) => {
@@ -21,11 +21,11 @@ test.describe('Autenticación', () => {
     await page.getByLabel('Usuario').fill('vendedor1')
     await page.getByLabel('Contraseña').fill('vend1234')
     await page.getByRole('button', { name: 'Ingresar' }).click()
-    await expect(page.getByText('Ventas del periodo')).toBeVisible()
+    await expect(page.getByText('¿Qué quieres hacer?')).toBeVisible()
 
-    await page.getByText('Ventas POS').click()
+    await page.getByRole('link', { name: 'Vender', exact: true }).click()
     await expect(page).toHaveURL(/ventas/)
-    await expect(page.getByText('Punto de Venta')).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Vender' })).toBeVisible()
   })
 
   test('muestra error con credenciales incorrectas', async ({ page }) => {
@@ -44,7 +44,7 @@ test.describe('Autenticación', () => {
     await page.getByLabel('Contraseña').fill('admin1234')
     await page.getByRole('button', { name: 'Ingresar' }).click()
 
-    await expect(page.getByText('Ventas del periodo')).toBeVisible()
-    await expect(page.getByText('Ventas del periodo')).toBeVisible()
+    await expect(page.getByText('¿Qué quieres hacer?')).toBeVisible()
+    await expect(page.getByText('¿Qué quieres hacer?')).toBeVisible()
   })
 })

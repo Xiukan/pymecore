@@ -1,4 +1,6 @@
-import { IsEmail, IsEnum, IsOptional, IsString, Matches, MinLength } from 'class-validator';
+import { ApiPropertyOptional } from '@nestjs/swagger';
+import { IsEmail, IsEnum, IsInt, IsNumber, IsOptional, IsString, Max, Min, MinLength } from 'class-validator';
+import { EsRut } from '../../utils/es-rut.decorator';
 import { TipoEntidad } from '@prisma/client';
 
 export class CreateEntidadDto {
@@ -6,7 +8,7 @@ export class CreateEntidadDto {
   tipoEntidad: TipoEntidad;
 
   @IsString()
-  @Matches(/^\d{7,8}-[\dkK]$/, { message: 'RUT inválido. Formato esperado: 12345678-9' })
+  @EsRut()
   rut: string;
 
   @IsString()
@@ -24,4 +26,18 @@ export class CreateEntidadDto {
   @IsString()
   @IsOptional()
   direccion?: string;
+
+  @ApiPropertyOptional({ description: 'Monto máximo adeudado en ventas a crédito (0 = sin crédito)' })
+  @IsNumber({ maxDecimalPlaces: 0 })
+  @Min(0)
+  @Max(1_000_000_000)
+  @IsOptional()
+  cupoCredito?: number;
+
+  @ApiPropertyOptional({ description: 'Plazo de pago de las ventas a crédito, en días' })
+  @IsInt()
+  @Min(0)
+  @Max(365)
+  @IsOptional()
+  diasCredito?: number;
 }

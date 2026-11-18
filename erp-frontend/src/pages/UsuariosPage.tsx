@@ -110,7 +110,7 @@ export default function UsuariosPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-gray-900">Usuarios</h1>
+        <h1 className="text-xl font-semibold text-gray-900">Personas que usan el sistema</h1>
         <button
           onClick={abrirCrear}
           className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"

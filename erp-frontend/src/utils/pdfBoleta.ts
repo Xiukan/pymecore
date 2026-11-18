@@ -1,4 +1,7 @@
 import jsPDF from 'jspdf'
+import type { Empresa } from '@/types'
+
+export type EmisorPdf = Pick<Empresa, 'rut' | 'razonSocial' | 'giro' | 'direccion' | 'comuna'>
 
 interface DetallePdf {
   nombre: string
@@ -11,8 +14,7 @@ interface BoletaData {
   folio: number
   tipoDoc: number
   fecha: string
-  rutEmisor: string
-  razonSocialEmisor: string
+  emisor: EmisorPdf
   rutReceptor: string
   razonSocialReceptor: string
   medioPago: string
@@ -35,13 +37,15 @@ export function generarPdfBoleta(data: BoletaData): void {
   // Cabecera emisor
   doc.setFontSize(14)
   doc.setFont('helvetica', 'bold')
-  doc.text('PYMECORE', W / 2, y, { align: 'center' })
+  doc.text(data.emisor.razonSocial, W / 2, y, { align: 'center' })
   y += 6
   doc.setFontSize(9)
   doc.setFont('helvetica', 'normal')
-  doc.text(data.razonSocialEmisor, W / 2, y, { align: 'center' })
+  doc.text(`RUT: ${data.emisor.rut}`, W / 2, y, { align: 'center' })
   y += 4
-  doc.text(`RUT: ${data.rutEmisor}`, W / 2, y, { align: 'center' })
+  doc.text(data.emisor.giro, W / 2, y, { align: 'center' })
+  y += 4
+  doc.text(`${data.emisor.direccion}, ${data.emisor.comuna}`, W / 2, y, { align: 'center' })
   y += 4
   doc.text(data.sucursal, W / 2, y, { align: 'center' })
   y += 6
@@ -139,7 +143,7 @@ function _dibujarTimbreSii(doc: jsPDF, data: BoletaData, y: number, W: number): 
     // DTE generado — mostrar datos del timbre
     const folio = meta?.folio ?? data.folio
     const tipoDoc = meta?.tipoDoc ?? data.tipoDoc
-    const rutEmisor = meta?.rutEmisor ?? data.rutEmisor
+    const rutEmisor = meta?.rutEmisor ?? data.emisor.rut
     const monto = meta?.montoTotal ?? data.montoTotal
     const fecha = meta?.fechaEmision ?? data.fecha
 

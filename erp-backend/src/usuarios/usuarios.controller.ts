@@ -1,5 +1,6 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ParseLooseUuidPipe } from '../utils/parse-uuid.pipe';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CreateUsuarioDto } from './dto/create-usuario.dto';
 import { UpdateUsuarioDto } from './dto/update-usuario.dto';
@@ -26,19 +27,19 @@ export class UsuariosController {
 
   @Get(':id')
   @ApiOperation({ summary: 'Obtener usuario por ID' })
-  findOne(@Param('id') id: string) {
+  findOne(@Param('id', ParseLooseUuidPipe) id: string) {
     return this.service.findOne(id);
   }
 
   @Patch(':id')
   @ApiOperation({ summary: 'Actualizar usuario' })
-  update(@Param('id') id: string, @Body() dto: UpdateUsuarioDto) {
+  update(@Param('id', ParseLooseUuidPipe) id: string, @Body() dto: UpdateUsuarioDto) {
     return this.service.update(id, dto);
   }
 
   @Delete(':id')
   @ApiOperation({ summary: 'Desactivar usuario (soft delete)' })
-  remove(@Param('id') id: string) {
+  remove(@Param('id', ParseLooseUuidPipe) id: string) {
     return this.service.remove(id);
   }
 }

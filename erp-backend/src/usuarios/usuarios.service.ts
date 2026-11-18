@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateUsuarioDto } from './dto/create-usuario.dto';
@@ -45,7 +45,9 @@ export class UsuariosService {
   }
 
   async update(id: string, dto: UpdateUsuarioDto) {
-    await this.findOne(id);
+    const actual = await this.findOne(id);
+    const dejaDeSerAdmin = (dto.rol !== undefined && dto.rol !== 'Administrador') || dto.estado === 'Inactivo';
+    if (actual.rol === 'Administrador' && actual.estado === 'Activo' && dejaDeSerAdmin) await this.exigirOtroAdmin(id);
     const data: Record<string, unknown> = {};
     if (dto.nombreCompleto !== undefined) data.nombreCompleto = dto.nombreCompleto;
     if (dto.rol !== undefined) data.rol = dto.rol;
@@ -57,11 +59,18 @@ export class UsuariosService {
   }
 
   async remove(id: string) {
-    await this.findOne(id);
+    const actual = await this.findOne(id);
+    if (actual.rol === 'Administrador' && actual.estado === 'Activo') await this.exigirOtroAdmin(id);
     return this.prisma.usuario.update({
       where: { id },
       data: { estado: 'Inactivo' },
       select: SELECT,
     });
+  }
+
+  /** Sin otro administrador activo nadie podría volver a gestionar usuarios ni la empresa. */
+  private async exigirOtroAdmin(id: string) {
+    const otros = await this.prisma.usuario.count({ where: { rol: 'Administrador', estado: 'Activo', id: { not: id } } });
+    if (otros === 0) throw new BadRequestException('No se puede desactivar ni cambiar el rol del último administrador activo.');
   }
 }

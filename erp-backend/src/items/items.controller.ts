@@ -1,5 +1,6 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { ParseLooseUuidPipe } from '../utils/parse-uuid.pipe';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CreateItemDto } from './dto/create-item.dto';
 import { UpdateItemDto } from './dto/update-item.dto';
@@ -27,21 +28,21 @@ export class ItemsController {
 
   @Get(':id')
   @ApiOperation({ summary: 'Obtener ítem por ID' })
-  findOne(@Param('id') id: string) {
+  findOne(@Param('id', ParseLooseUuidPipe) id: string) {
     return this.service.findOne(id);
   }
 
   @Patch(':id')
   @Roles('Administrador', 'Encargado')
   @ApiOperation({ summary: 'Actualizar ítem' })
-  update(@Param('id') id: string, @Body() dto: UpdateItemDto) {
+  update(@Param('id', ParseLooseUuidPipe) id: string, @Body() dto: UpdateItemDto) {
     return this.service.update(id, dto);
   }
 
   @Delete(':id')
   @Roles('Administrador')
   @ApiOperation({ summary: 'Desactivar ítem (soft delete)' })
-  remove(@Param('id') id: string) {
+  remove(@Param('id', ParseLooseUuidPipe) id: string) {
     return this.service.remove(id);
   }
 }

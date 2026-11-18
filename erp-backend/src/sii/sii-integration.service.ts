@@ -6,48 +6,80 @@ import * as forge from 'node-forge';
 import { SignedXml } from 'xml-crypto';
 import { DOMParser, XMLSerializer } from '@xmldom/xmldom';
 
+export interface Emisor {
+  rut: string;
+  razonSocial: string;
+  giro: string;
+  direccion: string;
+  comuna: string;
+}
+
 export interface DteData {
   folio: number;
   tipoDoc: number;
-  rutEmisor: string;
+  emisor: Emisor;
   rutReceptor: string;
   razonSocialReceptor: string;
+  direccionReceptor?: string | null;
   fechaEmision: string;
   montoTotal: number;
+  /** Desglose del total (precios con IVA incluido). */
+  montoNeto?: number;
+  iva?: number;
   primerItem: string;
   detalles: { nombre: string; cantidad: number; precio: number; subtotal: number }[];
 }
+
+/** Texto que viene de usuarios o del catálogo: sin escapar rompería el XML o inyectaría nodos. */
+const xml = (valor: string | number) =>
+  String(valor)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
 
 export interface DteResult {
   folio: number;
   tipoDoc: number;
   rutEmisor: string;
+  rutReceptor?: string;
   fechaEmision: string;
   montoTotal: number;
   xmlFirmado: string;
   xmlBase64: string;
+  /** true cuando no se pudo firmar y el XML es un sustituto: no es un DTE válido. */
+  esMock?: boolean;
 }
 
 @Injectable()
 export class SiiIntegrationService {
   private readonly logger = new Logger(SiiIntegrationService.name);
+  // Rutas del CAF y del certificado desde el entorno (ADR-03); por defecto, sii-certs/.
   private readonly certsDir = path.join(process.cwd(), 'sii-certs');
-  private readonly rutEmisor = '76.000.000-1';
-  private readonly p12Password = 'tesis123';
+  private readonly rutaCaf = process.env.SII_CAF_PATH || path.join(this.certsDir, 'CAF_Prueba.xml');
+  private readonly rutaP12 = process.env.SII_P12_PATH || path.join(this.certsDir, 'mi_certificado.p12');
+  private caf?: { cafPrivKeyPem: string; daXml: string };
+  private p12?: { privateKeyPem: string; certPem: string };
 
   emitirDTE(datos: DteData): DteResult {
     try {
-      const { cafPrivKeyPem, daXml } = this.parseCaf();
+      // El CAF y el .p12 se descifran una vez: hacerlo en cada venta bloqueaba el event loop
+      // y alargaba las transacciones de las ventas concurrentes hasta su vencimiento.
+      this.caf ??= this.parseCaf();
+      this.p12 ??= this.loadP12();
+      const { cafPrivKeyPem, daXml } = this.caf;
       const ted = this.generarTED(datos, cafPrivKeyPem, daXml);
       const dteXml = this.generarXMLDTE(datos, ted);
-      const { privateKeyPem, certPem } = this.loadP12();
+      const { privateKeyPem, certPem } = this.p12;
       const xmlFirmado = this.firmarDTE(dteXml, privateKeyPem, certPem, datos.folio, datos.tipoDoc);
 
       this.logger.log(`DTE folio ${datos.folio} tipo ${datos.tipoDoc} emitido correctamente`);
       return {
         folio: datos.folio,
         tipoDoc: datos.tipoDoc,
-        rutEmisor: datos.rutEmisor,
+        rutEmisor: datos.emisor.rut,
+        rutReceptor: datos.rutReceptor,
         fechaEmision: datos.fechaEmision,
         montoTotal: datos.montoTotal,
         xmlFirmado,
@@ -60,7 +92,7 @@ export class SiiIntegrationService {
   }
 
   private parseCaf(): { cafPrivKeyPem: string; daXml: string } {
-    const cafRaw = fs.readFileSync(path.join(this.certsDir, 'CAF_Prueba.xml'), 'utf8');
+    const cafRaw = fs.readFileSync(this.rutaCaf, 'utf8');
     const doc = new DOMParser().parseFromString(cafRaw, 'text/xml');
 
     const rsask = (doc.getElementsByTagName('RSASK')[0].textContent ?? '').trim();
@@ -87,14 +119,14 @@ export class SiiIntegrationService {
 
     const dd =
       `<DD>` +
-      `<RE>${datos.rutEmisor}</RE>` +
+      `<RE>${xml(datos.emisor.rut)}</RE>` +
       `<TD>${datos.tipoDoc}</TD>` +
       `<F>${datos.folio}</F>` +
       `<FE>${datos.fechaEmision}</FE>` +
-      `<RR>${datos.rutReceptor}</RR>` +
-      `<RSR>${datos.razonSocialReceptor.substring(0, 40)}</RSR>` +
+      `<RR>${xml(datos.rutReceptor)}</RR>` +
+      `<RSR>${xml(datos.razonSocialReceptor.substring(0, 40))}</RSR>` +
       `<MNT>${Math.round(datos.montoTotal)}</MNT>` +
-      `<IT1>${datos.primerItem.substring(0, 40)}</IT1>` +
+      `<IT1>${xml(datos.primerItem.substring(0, 40))}</IT1>` +
       daXml +
       `<TSTED>${tsted}</TSTED>` +
       `</DD>`;
@@ -115,7 +147,7 @@ export class SiiIntegrationService {
         (d, i) =>
           `<Detalle>` +
           `<NroLinDet>${i + 1}</NroLinDet>` +
-          `<NmbItem>${d.nombre}</NmbItem>` +
+          `<NmbItem>${xml(d.nombre)}</NmbItem>` +
           `<QtyItem>${d.cantidad}</QtyItem>` +
           `<PrcItem>${Math.round(d.precio)}</PrcItem>` +
           `<MntItem>${Math.round(d.subtotal)}</MntItem>` +
@@ -128,9 +160,16 @@ export class SiiIntegrationService {
       `<Documento ID="${id}">` +
       `<Encabezado>` +
       `<IdDoc><TipoDTE>${datos.tipoDoc}</TipoDTE><Folio>${datos.folio}</Folio><FchEmis>${datos.fechaEmision}</FchEmis></IdDoc>` +
-      `<Emisor><RUTEmisor>${datos.rutEmisor}</RUTEmisor><RznSoc>EMPRESA PRUEBA SPA</RznSoc><Giro>TECNOLOGIA</Giro><DirOrigen>AV. TESIS 123</DirOrigen><CmnaOrigen>VILLA ALEGRE</CmnaOrigen></Emisor>` +
-      `<Receptor><RUTRecep>${datos.rutReceptor}</RUTRecep><RznSocRecep>${datos.razonSocialReceptor}</RznSocRecep><DirRecep>DIR</DirRecep><CmnaRecep>CMNA</CmnaRecep></Receptor>` +
-      `<Totales><MntTotal>${Math.round(datos.montoTotal)}</MntTotal></Totales>` +
+      `<Emisor><RUTEmisor>${xml(datos.emisor.rut)}</RUTEmisor><RznSoc>${xml(datos.emisor.razonSocial)}</RznSoc>` +
+      `<Giro>${xml(datos.emisor.giro)}</Giro><DirOrigen>${xml(datos.emisor.direccion)}</DirOrigen>` +
+      `<CmnaOrigen>${xml(datos.emisor.comuna)}</CmnaOrigen></Emisor>` +
+      `<Receptor><RUTRecep>${xml(datos.rutReceptor)}</RUTRecep><RznSocRecep>${xml(datos.razonSocialReceptor)}</RznSocRecep>` +
+      (datos.direccionReceptor ? `<DirRecep>${xml(datos.direccionReceptor)}</DirRecep>` : '') +
+      `</Receptor>` +
+      `<Totales>` +
+      (datos.montoNeto !== undefined ? `<MntNeto>${Math.round(datos.montoNeto)}</MntNeto>` : '') +
+      (datos.iva !== undefined ? `<IVA>${Math.round(datos.iva)}</IVA>` : '') +
+      `<MntTotal>${Math.round(datos.montoTotal)}</MntTotal></Totales>` +
       `</Encabezado>` +
       detalles +
       tedXml +
@@ -141,11 +180,13 @@ export class SiiIntegrationService {
   }
 
   private loadP12(): { privateKeyPem: string; certPem: string } {
-    const p12Der = fs.readFileSync(path.join(this.certsDir, 'mi_certificado.p12'));
+    const p12Der = fs.readFileSync(this.rutaP12);
     const p12Asn1 = forge.asn1.fromDer(
       forge.util.createBuffer(p12Der.toString('binary')),
     );
-    const p12 = forge.pkcs12.pkcs12FromAsn1(p12Asn1, this.p12Password);
+    const password = process.env.SII_P12_PASSWORD;
+    if (!password) throw new Error('Falta SII_P12_PASSWORD');
+    const p12 = forge.pkcs12.pkcs12FromAsn1(p12Asn1, password);
 
     const keyBags = p12.getBags({ bagType: forge.pki.oids.pkcs8ShroudedKeyBag });
     const keyBag = keyBags[forge.pki.oids.pkcs8ShroudedKeyBag]?.[0];
@@ -196,11 +237,13 @@ export class SiiIntegrationService {
     return {
       folio: datos.folio,
       tipoDoc: datos.tipoDoc,
-      rutEmisor: datos.rutEmisor,
+      rutEmisor: datos.emisor.rut,
+      rutReceptor: datos.rutReceptor,
       fechaEmision: datos.fechaEmision,
       montoTotal: datos.montoTotal,
       xmlFirmado: mockXml,
       xmlBase64: Buffer.from(mockXml).toString('base64'),
+      esMock: true,
     };
   }
 }

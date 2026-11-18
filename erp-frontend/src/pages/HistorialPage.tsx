@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useAuth } from '@/context/AuthContext'
+import { useEmpresa } from '@/hooks/useEmpresa'
 import { getTransacciones, getSucursales } from '@/api'
 import { generarPdfBoleta } from '@/utils/pdfBoleta'
 import { useOnlineStatus } from '@/hooks/useOnlineStatus'
@@ -13,22 +14,18 @@ const TIPO_LABEL: Record<string, string> = {
   NOTA_CREDITO: 'Nota crédito',
 }
 
-function SiiBadge({ sincronizacion }: { sincronizacion?: string }) {
-  if (!sincronizacion || sincronizacion === 'SINCRONIZADO') return null
-  if (sincronizacion === 'PENDIENTE') {
-    return (
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-700">
-        <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-        Pendiente SII
-      </span>
-    )
+/** Estado del DTE ante el SII con ícono y texto; un rechazo no anula la venta (AC-04). */
+function SiiBadge({ sincronizacion, estadoDte, glosa }: { sincronizacion?: string; estadoDte?: string | null; glosa?: string | null }) {
+  if (sincronizacion === 'ERROR') {
+    return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700">⛔ Error de envío</span>
   }
-  return (
-    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700">
-      <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
-      Error envío
-    </span>
-  )
+  if (estadoDte === 'RECHAZADO') {
+    return <span title={glosa ?? ''} className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700">⛔ Rechazado por SII{glosa ? `: ${glosa}` : ''}</span>
+  }
+  if (estadoDte === 'ACEPTADO') {
+    return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-700">✓ Aceptado por SII</span>
+  }
+  return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-700">⏳ Pendiente de envío SII</span>
 }
 
 const TIPO_COLOR: Record<string, string> = {
@@ -41,6 +38,7 @@ const TIPO_COLOR: Record<string, string> = {
 
 export default function HistorialPage() {
   const { user } = useAuth()
+  const empresa = useEmpresa()
   const online = useOnlineStatus()
   const [sucursales, setSucursales] = useState<Sucursal[]>([])
   const [sucursalId, setSucursalId] = useState(user?.sucursalId ?? '')
@@ -90,14 +88,14 @@ export default function HistorialPage() {
   const descargarPdf = (t: Transaccion) => {
     if (!t.detalles?.length) return
     const meta = t.metadatosSii as any
+    if (!empresa) return
     generarPdfBoleta({
       folio: meta?.folio ?? parseInt(t.numeroFactura ?? '0'),
       tipoDoc: meta?.tipoDoc ?? 39,
       fecha: new Date(t.fechaRegistro).toLocaleDateString('es-CL'),
-      rutEmisor: '76.000.000-1',
-      razonSocialEmisor: 'PYMECORE SPA',
-      rutReceptor: t.entidad?.rut ?? '66.666.666-6',
-      razonSocialReceptor: t.entidad?.nombreRazonSocial ?? 'Cliente Final',
+      emisor: empresa,
+      rutReceptor: t.entidad?.rut ?? empresa.rutConsumidorFinal,
+      razonSocialReceptor: t.entidad?.nombreRazonSocial ?? empresa.nombreConsumidorFinal,
       medioPago: t.medioPago,
       sucursal: '',
       detalles: t.detalles.map((d) => ({
@@ -114,7 +112,7 @@ export default function HistorialPage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <h1 className="text-xl font-semibold text-gray-900">Historial de ventas</h1>
+        <h1 className="text-xl font-semibold text-gray-900">Ventas hechas</h1>
         {user?.rol === 'Administrador' && sucursales.length > 0 && (
           <select
             value={sucursalId}
@@ -195,9 +193,7 @@ export default function HistorialPage() {
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    {t.tipoTransaccion === 'VENTA' && (
-                      <SiiBadge sincronizacion={t.sincronizacion} />
-                    )}
+                    {t.tipoTransaccion === 'VENTA' && <SiiBadge sincronizacion={t.sincronizacion} estadoDte={t.estadoDte} glosa={t.glosaSii} />}
                   </td>
                   <td className="px-4 py-3 flex gap-2">
                     <button
@@ -260,10 +256,7 @@ export default function HistorialPage() {
                 {seleccionada.tipoTransaccion === 'VENTA' && (
                   <div className="flex items-center gap-2">
                     <span className="text-gray-500">SII:</span>{' '}
-                    {seleccionada.sincronizacion === 'SINCRONIZADO'
-                      ? <span className="text-green-600 text-xs font-medium">Enviado</span>
-                      : <SiiBadge sincronizacion={seleccionada.sincronizacion} />
-                    }
+                    <SiiBadge sincronizacion={seleccionada.sincronizacion} estadoDte={seleccionada.estadoDte} glosa={seleccionada.glosaSii} />
                   </div>
                 )}
                 {seleccionada.observaciones && (

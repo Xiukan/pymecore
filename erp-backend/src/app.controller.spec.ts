@@ -1,22 +1,14 @@
-import { Test, TestingModule } from '@nestjs/testing';
-import { AppController } from './app.controller';
-import { AppService } from './app.service';
+import { ServiceUnavailableException } from '@nestjs/common'
+import { AppController } from './app.controller'
 
-describe('AppController', () => {
-  let appController: AppController;
+describe('health', () => {
+  it('responde ok cuando la base contesta', async () => {
+    const prisma = { $queryRaw: jest.fn().mockResolvedValue([1]) }
+    await expect(new AppController(prisma as any).health()).resolves.toEqual({ status: 'ok' })
+  })
 
-  beforeEach(async () => {
-    const app: TestingModule = await Test.createTestingModule({
-      controllers: [AppController],
-      providers: [AppService],
-    }).compile();
-
-    appController = app.get<AppController>(AppController);
-  });
-
-  describe('root', () => {
-    it('should return "Hello World!"', () => {
-      expect(appController.getHello()).toBe('Hello World!');
-    });
-  });
-});
+  it('responde 503 cuando la base no contesta', async () => {
+    const prisma = { $queryRaw: jest.fn().mockRejectedValue(new Error('down')) }
+    await expect(new AppController(prisma as any).health()).rejects.toThrow(ServiceUnavailableException)
+  })
+})
