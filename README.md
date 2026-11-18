@@ -5,7 +5,29 @@ Stack: NestJS 11 · Prisma 7 · PostgreSQL 16 · React · Vite · Tailwind CSS
 
 ---
 
-## 1. Instalar dependencias del sistema
+## Versión candidata en 3 comandos
+
+```bash
+git clone https://github.com/Xiukan/pymecore.git && cd pymecore
+docker compose -f docker-compose.demo.yml up --build -d   # local + nube, cada uno con su base
+./scripts/humo-demo.sh                                    # vende, corta la nube, reconecta y verifica
+```
+
+Interfaz del local: http://localhost:8001 (`admin` / `admin1234`). Nube: http://localhost:3100. Para simular un corte de internet: `docker compose -f docker-compose.demo.yml stop cloud` (y `start cloud` para reconectar). Solo requiere Docker; no usa el certificado real del SII (firma con material sintético).
+
+Verificación completa (escaneo de secretos, unitarias, integración, navegador y p95) con un comando: `./ejecutar_pruebas.sh` → `resumen_pruebas.txt`. Trazabilidad de requisitos, pruebas, DoD y defectos: [`docs/trazabilidad.md`](docs/trazabilidad.md).
+
+### Qué es la versión candidata y qué es código heredado
+
+| Parte | Incluye | Estado |
+|---|---|---|
+| **Incremento 1** | Venta sin internet, caja, boleta con folio local, sincronización local → nube, licencia de 24 h, alertas de vencimiento ("Próximo a vencer", "Sin dato"), compras de insumos con fecha | Versión candidata (siempre visible) |
+| **Incremento 2** | Dar de baja lotes vencidos o dañados, "Pérdidas por vencimiento" (perdido vs salvado por el aviso) y aviso de vencimiento por producto | Versión candidata (siempre visible) |
+| **Heredado** | Ofertas, devoluciones, clientes y fiado, gastos, reportes, cotizaciones, contabilidad, bancos, compras a productores, campo, varios locales | Fuera del incremento: **apagado** en instalaciones nuevas; se activa en *Datos de la empresa*. Conserva sus pruebas para no romperlo |
+
+---
+
+## 1. Instalar dependencias del sistema (desarrollo)
 
 ### Node.js 20
 
@@ -142,7 +164,7 @@ Abre el navegador en `http://localhost:5173`.
 
 ---
 
-## Módulos
+## Módulos (incluye los heredados, apagados por defecto)
 
 | Módulo | Qué hace |
 |---|---|

@@ -4,7 +4,10 @@ import { exigirSucursal, sucursalDe, UsuarioSesion } from '../auth/sucursal-scop
 import { PrismaService } from '../prisma/prisma.service';
 import { ZERO } from '../utils/money.util';
 import { EmpresaService } from '../empresa/empresa.service';
-import { RegistrarLoteDto } from './dto/lotes.dto';
+import { BajaLoteDto, RegistrarLoteDto } from './dto/lotes.dto';
+import { resumenMermas, vendidaEnAlerta } from './mermas';
+import { exigirPeriodoAbierto } from '../utils/periodos';
+import { peso } from '../utils/money.util';
 import { repartirFefo } from './fefo';
 import { estadoVencimiento } from './vencimiento';
 
@@ -33,7 +36,7 @@ export class LotesService {
     const [stock, lotes] = await Promise.all([
       this.prisma.stockLocal.findMany({
         where: { stockActual: { gt: 0 }, item: { estado: 'Activo' }, ...(sucursal && { sucursalId: sucursal }) },
-        include: { item: { select: { nombre: true, unidadMedida: true } }, sucursal: { select: { nombre: true } } },
+        include: { item: { select: { nombre: true, unidadMedida: true, diasAlertaVencimiento: true } }, sucursal: { select: { nombre: true } } },
       }),
       this.prisma.lote.findMany({ where: { cantidadActual: { gt: 0 }, ...(sucursal && { sucursalId: sucursal }) } }),
     ]);
@@ -42,11 +45,13 @@ export class LotesService {
       const propios = lotes.filter((l) => l.itemId === s.itemId && l.sucursalId === s.sucursalId);
       const conFecha = propios.filter((l) => l.fechaVencimiento);
       const cubierto = conFecha.reduce((t, l) => t.add(l.cantidadActual), new D(0));
-      const base = { productoId: s.itemId, nombre: s.item.nombre, unidad: s.item.unidadMedida, sucursal: s.sucursal.nombre };
-      const porLote = conFecha.map((l) => ({ ...base, loteId: l.id, lote: l.codigo, cantidad: l.cantidadActual, fechaVencimiento: l.fechaVencimiento, ...this.estado(l.fechaVencimiento, hoy, diasAlertaVencimiento) }));
+      // Umbral del producto si lo tiene (PBI-07); si no, el de la empresa.
+      const umbral = s.item.diasAlertaVencimiento ?? diasAlertaVencimiento;
+      const base = { productoId: s.itemId, nombre: s.item.nombre, unidad: s.item.unidadMedida, sucursal: s.sucursal.nombre, umbralDias: umbral };
+      const porLote = conFecha.map((l) => ({ ...base, loteId: l.id, lote: l.codigo, cantidad: l.cantidadActual, fechaVencimiento: l.fechaVencimiento, ...this.estado(l.fechaVencimiento, hoy, umbral) }));
       const sinFecha = D.max(s.stockActual.sub(cubierto), 0);
       return sinFecha.gt(0)
-        ? [...porLote, { ...base, loteId: null, lote: null, cantidad: sinFecha, fechaVencimiento: null, ...this.estado(null, hoy, diasAlertaVencimiento) }]
+        ? [...porLote, { ...base, loteId: null, lote: null, cantidad: sinFecha, fechaVencimiento: null, ...this.estado(null, hoy, umbral) }]
         : porLote;
     });
     const orden = { VENCIDO: 0, PROXIMO_A_VENCER: 1, OK: 2, SIN_DATO: 3 };
@@ -56,6 +61,72 @@ export class LotesService {
   private estado(fecha: Date | null, hoy: string, umbral: number) {
     const r = estadoVencimiento(fecha, hoy, umbral);
     return { estadoVencimiento: r.estado, diasRestantes: r.diasRestantes };
+  }
+
+  /**
+   * Da de baja un lote (PBI-06): descuenta del lote y del stock, registra la merma valorizada a
+   * costo promedio (con su asiento contable) y deja el movimiento en la trazabilidad del lote.
+   */
+  async darDeBaja(loteId: string, dto: BajaLoteDto, user: UsuarioSesion) {
+    return this.prisma.$transaction(async (tx) => {
+      await exigirPeriodoAbierto(tx, new Date());
+      await tx.$queryRaw`SELECT id FROM lotes WHERE id = ${loteId}::uuid FOR UPDATE`;
+      const lote = await tx.lote.findUnique({ where: { id: loteId }, include: { item: true } });
+      if (!lote) throw new NotFoundException('Lote no encontrado');
+      exigirSucursal(user, lote.sucursalId);
+      if (lote.cantidadActual.lte(0)) throw new BadRequestException('Este lote ya no tiene saldo: se vendió o ya se dio de baja.');
+      const cantidad = dto.cantidad !== undefined ? new D(dto.cantidad) : lote.cantidadActual;
+      if (cantidad.gt(lote.cantidadActual)) throw new BadRequestException(`Al lote solo le quedan ${lote.cantidadActual} ${lote.item.unidadMedida.toLowerCase()}.`);
+      if (dto.motivo === 'VENCIDO' && (!lote.fechaVencimiento || lote.fechaVencimiento.toISOString().slice(0, 10) >= this.hoy())) {
+        throw new BadRequestException('El lote aún no vence: usa el motivo "dañado" si hay que retirarlo antes.');
+      }
+      const stock = await tx.stockLocal.updateMany({
+        where: { sucursalId: lote.sucursalId, itemId: lote.itemId, stockActual: { gte: cantidad } },
+        data: { stockActual: { decrement: cantidad } },
+      });
+      if (stock.count !== 1) throw new BadRequestException('El stock del producto es menor que el saldo del lote; ajusta el inventario primero.');
+      await tx.lote.update({ where: { id: lote.id }, data: { cantidadActual: { decrement: cantidad } } });
+      const costo = lote.item.costoPromedio;
+      const valor = peso(cantidad.mul(costo));
+      const merma = await tx.transaccion.create({
+        data: {
+          sucursalId: lote.sucursalId,
+          usuarioId: user.id,
+          tipoTransaccion: 'MERMA',
+          montoTotal: valor,
+          motivoMerma: `${dto.motivo === 'VENCIDO' ? 'Vencido' : 'Dañado'}: lote ${lote.codigo}${dto.observacion ? ` (${dto.observacion.trim()})` : ''}`,
+          detalles: { create: { itemId: lote.itemId, cantidad, costoUnitario: costo, precioUnitario: costo, subtotal: valor } },
+        },
+      });
+      await tx.movimientoLote.create({ data: { loteId: lote.id, tipo: dto.motivo === 'VENCIDO' ? 'BAJA_VENCIDO' : 'BAJA_DANADO', cantidad: cantidad.neg(), transaccionId: merma.id } });
+      return { loteId: lote.id, codigo: lote.codigo, cantidad, valor, mermaId: merma.id, saldo: lote.cantidadActual.sub(cantidad) };
+    });
+  }
+
+  /** Perdido por vencimiento frente a lo salvado gracias a la alerta (señal de H-01). */
+  async reporteMermas(user: UsuarioSesion, desde: string, hasta: string, sucursalId?: string) {
+    const sucursal = sucursalDe(user, sucursalId);
+    const { diasAlertaVencimiento } = await this.empresa.get();
+    const rango = { gte: new Date(`${desde}T00:00:00`), lt: new Date(new Date(`${hasta}T00:00:00`).getTime() + 86_400_000) };
+    const movs = await this.prisma.movimientoLote.findMany({
+      where: { fecha: rango, tipo: { in: ['BAJA_VENCIDO', 'BAJA_DANADO', 'VENTA'] }, lote: sucursal ? { sucursalId: sucursal } : undefined },
+      include: { lote: { include: { item: { select: { nombre: true, diasAlertaVencimiento: true } } } } },
+    });
+    const detalles = await this.prisma.transaccionDetalle.findMany({
+      where: { transaccionId: { in: movs.map((m) => m.transaccionId).filter((x): x is string => !!x) } },
+      select: { transaccionId: true, itemId: true, costoUnitario: true },
+    });
+    const costo = (m: (typeof movs)[number]) => Number(detalles.find((d) => d.transaccionId === m.transaccionId && d.itemId === m.lote.itemId)?.costoUnitario ?? 0);
+    const dia = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const valorizar = (m: (typeof movs)[number]) => {
+      const cantidad = Math.abs(Number(m.cantidad));
+      return { fecha: dia(m.fecha), itemId: m.lote.itemId, nombre: m.lote.item.nombre, cantidad, valor: cantidad * costo(m) };
+    };
+    const bajas = movs.filter((m) => m.tipo.startsWith('BAJA_')).map(valorizar);
+    const salvadas = movs
+      .filter((m) => m.tipo === 'VENTA' && m.lote.fechaVencimiento && vendidaEnAlerta(dia(m.fecha), m.lote.fechaVencimiento.toISOString().slice(0, 10), m.lote.item.diasAlertaVencimiento ?? diasAlertaVencimiento))
+      .map(valorizar);
+    return { desde, hasta, ...resumenMermas(bajas, salvadas) };
   }
 
   /** Registra la fecha de vencimiento de stock que ya está en bodega (sin lote con fecha). */

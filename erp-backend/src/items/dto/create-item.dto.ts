@@ -1,4 +1,4 @@
-import { IsBoolean, IsNumber, IsOptional, IsString, Max, Min, MinLength } from 'class-validator';
+import { IsInt, IsBoolean, IsNumber, IsOptional, IsString, Max, Min, MinLength } from 'class-validator';
 
 export class CreateItemDto {
   @IsString()
@@ -38,6 +38,13 @@ export class CreateItemDto {
   @Max(99)
   @IsOptional()
   humedadBasePct?: number;
+
+  /** Días antes del vencimiento para avisar "Próximo a vencer"; null = usar el de la empresa. */
+  @IsInt()
+  @Min(0)
+  @Max(365)
+  @IsOptional()
+  diasAlertaVencimiento?: number | null;
 
   @IsNumber()
   @Min(0)

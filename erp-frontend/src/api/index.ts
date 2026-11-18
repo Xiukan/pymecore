@@ -23,6 +23,7 @@ export const createItem = (data: {
   afectoIva?: boolean
   humedadBasePct?: number
   retencionIvaPct?: number
+  diasAlertaVencimiento?: number
 }) => api.post<Item>('/items', data)
 
 export const updateItem = (id: string, data: {
@@ -507,6 +508,7 @@ export interface AlertaVencimiento {
   fechaVencimiento: string | null
   estadoVencimiento: EstadoVencimiento
   diasRestantes: number | null
+  umbralDias: number
 }
 export const getAlertasVencimiento = (sucursalId?: string) =>
   api.get<AlertaVencimiento[]>('/inventario/alertas', { params: { sucursalId } })
@@ -520,3 +522,19 @@ export interface EstadoSync {
   licencia: { vigente: true; venceEn: string; enGracia: boolean } | { vigente: false; motivo: string } | null
 }
 export const getEstadoSync = () => api.get<EstadoSync>('/sync/estado')
+
+// Incremento 2: bajas de lotes, mermas por vencimiento y aviso por producto
+export const darDeBajaLote = (id: string, data: { motivo: 'VENCIDO' | 'DANADO'; cantidad?: number; observacion?: string }) =>
+  api.post<{ codigo: string; cantidad: string; valor: string; saldo: string }>(`/lotes/${id}/baja`, data)
+export interface ReporteMermas {
+  desde: string
+  hasta: string
+  perdido: number
+  salvado: number
+  tasaPerdida: number | null
+  porProducto: { itemId: string; nombre: string; perdido: number; unidadesPerdidas: number; salvado: number; unidadesSalvadas: number }[]
+  porMes: { mes: string; perdido: number; salvado: number }[]
+}
+export const getReporteMermas = (params: { desde?: string; hasta?: string }) => api.get<ReporteMermas>('/lotes/mermas', { params })
+export const cambiarAvisoProducto = (itemId: string, diasAlertaVencimiento: number | null) =>
+  api.patch(`/items/${itemId}`, { diasAlertaVencimiento })

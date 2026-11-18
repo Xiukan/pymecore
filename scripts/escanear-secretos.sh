@@ -24,7 +24,7 @@ echo "== Escaneo de secretos: versión actual =="
 # Archivos que nunca deben versionarse.
 while IFS= read -r f; do reporta "archivo sensible versionado: $f"; done < <(listar | grep -E '(\.p12|\.pfx|\.pem|\.key)$|(^|/)CAF[^/]*\.xml$|(^|/)\.env$')
 # Contenido: llaves privadas con cuerpo, clave del CAF, tokens y contraseñas del certificado con valor.
-patron='-----BEGIN [A-Z ]*PRIVATE KEY-----[[:space:]]*$|<RSASK>[^<]{20,}|github_pat_[A-Za-z0-9_]{20,}|ghp_[A-Za-z0-9]{30,}|AKIA[0-9A-Z]{16}|xox[baprs]-[A-Za-z0-9-]{10,}|SII_P12_PASSWORD=[^[:space:]]+'
+patron='-----BEGIN [A-Z ]*PRIVATE KEY-----[[:space:]]*$|<RSASK>[^<$]{20,}|github_pat_[A-Za-z0-9_]{20,}|ghp_[A-Za-z0-9]{30,}|AKIA[0-9A-Z]{16}|xox[baprs]-[A-Za-z0-9-]{10,}|SII_P12_PASSWORD=["\x27]?[^"\x27$[:space:]]{4,}["\x27]?[[:space:]]*$'
 while IFS= read -r l; do
   archivo=${l%%:*}
   # Una cabecera PEM sin cuerpo (código que arma el PEM) no es un secreto.

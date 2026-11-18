@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Param, ParseIntPipe, Post, Query, Request } from '@nestjs/common';
 import { Roles } from '../auth/decorators/roles.decorator';
-import { RegistrarLoteDto } from './dto/lotes.dto';
+import { BajaLoteDto, RegistrarLoteDto } from './dto/lotes.dto';
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { ParseLooseUuidPipe } from '../utils/parse-uuid.pipe';
 import { LotesService } from './lotes.service';
@@ -25,6 +25,22 @@ export class LotesController {
   @ApiOperation({ summary: 'Registrar la fecha de vencimiento de stock existente' })
   registrar(@Body() dto: RegistrarLoteDto, @Request() req: any) {
     return this.service.registrar(dto, req.user);
+  }
+
+  @Post(':id/baja')
+  @Roles('Administrador', 'Encargado')
+  @ApiOperation({ summary: 'Dar de baja un lote vencido o dañado: merma valorizada y trazable (PBI-06)' })
+  darDeBaja(@Param('id', ParseLooseUuidPipe) id: string, @Body() dto: BajaLoteDto, @Request() req: any) {
+    return this.service.darDeBaja(id, dto, req.user);
+  }
+
+  @Get('mermas')
+  @Roles('Administrador', 'Encargado')
+  @ApiOperation({ summary: 'Perdido por vencimiento frente a lo salvado por la alerta (H-01)' })
+  mermas(@Request() req: any, @Query('desde') desde?: string, @Query('hasta') hasta?: string, @Query('sucursalId') sucursalId?: string) {
+    const fecha = (v: string | undefined, def: string) => (/^\d{4}-\d{2}-\d{2}$/.test(v ?? '') ? v! : def);
+    const hoy = new Date().toISOString().slice(0, 10);
+    return this.service.reporteMermas(req.user, fecha(desde, `${hoy.slice(0, 4)}-01-01`), fecha(hasta, hoy), sucursalId);
   }
 
   @Get('por-vencer')

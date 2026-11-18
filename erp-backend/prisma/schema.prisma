@@ -188,21 +188,23 @@ model Entidad {
 }
 
 model Item {
-  id              String        @id @default(uuid()) @db.Uuid
-  codigoSku       String        @unique @map("codigo_sku") @db.VarChar(50)
-  nombre          String        @db.VarChar(150)
-  unidadMedida    String        @map("unidad_medida") @db.VarChar(20)
-  unidad          UnidadMedida  @relation(fields: [unidadMedida], references: [codigo])
-  precioVenta     Decimal       @default(0) @map("precio_venta") @db.Decimal(12, 2)
-  costoPromedio   Decimal       @default(0) @map("costo_promedio") @db.Decimal(12, 2)
-  precioCompra    Decimal       @default(0) @map("precio_compra") @db.Decimal(12, 2)
-  afectoIva       Boolean       @default(true) @map("afecto_iva")
+  id                    String        @id @default(uuid()) @db.Uuid
+  codigoSku             String        @unique @map("codigo_sku") @db.VarChar(50)
+  nombre                String        @db.VarChar(150)
+  unidadMedida          String        @map("unidad_medida") @db.VarChar(20)
+  unidad                UnidadMedida  @relation(fields: [unidadMedida], references: [codigo])
+  precioVenta           Decimal       @default(0) @map("precio_venta") @db.Decimal(12, 2)
+  costoPromedio         Decimal       @default(0) @map("costo_promedio") @db.Decimal(12, 2)
+  precioCompra          Decimal       @default(0) @map("precio_compra") @db.Decimal(12, 2)
+  afectoIva             Boolean       @default(true) @map("afecto_iva")
   // Agro: % del neto que el comprador retiene de IVA (cambio de sujeto parcial) y humedad
   // base sobre la que se castigan los kilos recibidos.
-  retencionIvaPct Decimal       @default(0) @map("retencion_iva_pct") @db.Decimal(5, 2)
-  humedadBasePct  Decimal       @default(0) @map("humedad_base_pct") @db.Decimal(5, 2)
-  estado          EstadoGeneral @default(Activo)
-  creadoEn        DateTime      @default(now()) @map("creado_en")
+  retencionIvaPct       Decimal       @default(0) @map("retencion_iva_pct") @db.Decimal(5, 2)
+  humedadBasePct        Decimal       @default(0) @map("humedad_base_pct") @db.Decimal(5, 2)
+  // Días de aviso "Próximo a vencer" propios del producto; vacío = el de la empresa (PBI-07).
+  diasAlertaVencimiento Int?          @map("dias_alerta_vencimiento")
+  estado                EstadoGeneral @default(Activo)
+  creadoEn              DateTime      @default(now()) @map("creado_en")
 
   stockLocal               StockLocal[]
   detalles                 TransaccionDetalle[]
