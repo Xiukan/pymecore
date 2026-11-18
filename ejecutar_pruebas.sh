@@ -84,7 +84,10 @@ export DATABASE_URL="$DB_URL_BASE/pyme_e2e"
   >"$LOGS/preparar_app.log" 2>&1 || { echo "Falló la preparación de la app (ver $LOGS/preparar_app.log)"; exit 1; }
 liberar_puerto $PUERTO_API
 liberar_puerto $PUERTO_WEB
-(cd "$BACKEND" && exec env JWT_SECRET="pruebas-locales-0123456789abcdef0123456789" LOGIN_MAX_INTENTOS=1000 APP_PORT=$PUERTO_API node dist/src/main.js >"$LOGS/api.log" 2>&1) & PIDS+=($!)
+# CORS_ORIGIN se fija aquí: si no, se hereda el del .env del desarrollador (por ejemplo, el de
+# .env.example) y el navegador bloquea las llamadas desde el puerto de prueba (D-09).
+(cd "$BACKEND" && exec env JWT_SECRET="pruebas-locales-0123456789abcdef0123456789" LOGIN_MAX_INTENTOS=1000 APP_PORT=$PUERTO_API \
+  CORS_ORIGIN="http://localhost:$PUERTO_WEB" node dist/src/main.js >"$LOGS/api.log" 2>&1) & PIDS+=($!)
 (cd "$FRONTEND" && VITE_API_URL="http://localhost:$PUERTO_API" pnpm exec vite build --outDir "$LOGS/web" --emptyOutDir >"$LOGS/web_build.log" 2>&1 \
   && exec pnpm exec vite preview --outDir "$LOGS/web" --port $PUERTO_WEB --strictPort >"$LOGS/web.log" 2>&1) & PIDS+=($!)
 if esperar "http://localhost:$PUERTO_API/health" 60 && esperar "http://localhost:$PUERTO_WEB" 120; then

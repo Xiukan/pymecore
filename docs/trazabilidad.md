@@ -30,6 +30,11 @@ Fuente única que enlaza retroalimentación → decisión → requisito → prue
 | 2 | PBI-06 | Baja de lotes y "Pérdidas por vencimiento" | Valor y aprendizaje: produce la señal de H-01 |
 | 3 | PBI-07 | Aviso de vencimiento por producto | Pospuesto en el Inc. 1 (RNF-MAN-01); depende de PBI-03 |
 | 4 | D-02 | Conectividad informada real con la cola vacía | Defecto encontrado al medir p95 en modo edge |
+| 5 | D-05 | Suites de integración independientes del orden | Fallaba solo en el CI; bloqueaba la regresión |
+| 6 | D-07 | La cola de envío no se tapa con ventas sin folio | Riesgo de perder la sincronización (ADR-02) |
+| 7 | D-06 | F3 cobra con el estado actual del POS | Descuadre de caja en el flujo principal |
+| 8 | D-08 | Scripts `.sh` ejecutables en Windows | Reproducibilidad de la candidata por un tercero |
+| 9 | D-09 | `ejecutar_pruebas.sh` no depende del `.env` del desarrollador | Reproducibilidad: fallaba siguiendo el README |
 | Pospuesto | PBI-08 | Catálogo y precios desde la nube al local | Riesgo medio; no aporta a H-01 |
 | Pospuesto | PBI-09 | Varios locales por PYME con conflictos (DEC-05) | Riesgo alto para la capacidad restante |
 
@@ -46,6 +51,7 @@ Estado = resultado de la última ejecución de `ejecutar_pruebas.sh` (no planifi
 | AC-13 | Venta dentro de la ventana de aviso → cuenta como salvado; baja → perdido; tasa calculada; sin datos → "Sin datos" | `incremento2.e2e-spec.ts`, [`mermas.spec.ts`](../erp-backend/src/lotes/mermas.spec.ts) | Pasa |
 | AC-14 | Producto con aviso propio (15 días) → "Próximo a vencer" antes que uno sin aviso (3 días); valor fuera de rango → 400; vacío → vuelve al de la empresa | `incremento2.e2e-spec.ts`, `incremento2.spec.ts` | Pasa |
 | Regresión Inc. 1 | AC-SYNC-01, AC-04 (AUTO-0005), AC-05, AC-06 (AUTO-0006), AC-07 (AUTO-0007), AC-08 | [`sync-nube.e2e-spec.ts`](../erp-backend/test/sync-nube.e2e-spec.ts), [`vencimientos.e2e-spec.ts`](../erp-backend/test/vencimientos.e2e-spec.ts), [`incremento1.spec.ts`](../erp-frontend/e2e/incremento1.spec.ts) | Pasan |
+| D-07 | 51 ventas sin folio y luego una boleta con folio → la boleta llega a la nube; al cargar folios se envían las 51, cada una con folio distinto | `sync-nube.e2e-spec.ts` ("más de un lote de ventas sin folio no tapa la cola…") | Pasa |
 
 ## 5. Definition of Done
 
@@ -59,12 +65,19 @@ Un ítem está terminado cuando cumple todo:
 6. **Revisión:** PR revisado y aprobado por otro integrante antes de integrar.
 7. **Reproducibilidad:** se ejecuta con `docker-compose.demo.yml` o con las instrucciones del README sin pasos extra.
 
-| Ítem | 1 | 2 | 3 | 4 | 5 | 6 | 7 |
-|---|---|---|---|---|---|---|---|
-| D-01 | ✓ | ✓ | ✓ | ✓ | ✓ | pendiente (PR) | ✓ |
-| PBI-06 | ✓ | ✓ | ✓ | ✓ | ✓ | pendiente (PR) | ✓ |
-| PBI-07 | ✓ | ✓ | ✓ | ✓ | ✓ | pendiente (PR) | ✓ |
-| D-02 | ✓ | ✓ | ✓ | ✓ | ✓ | pendiente (PR) | ✓ |
+| Ítem | 1 | 2 | 3 | 4 | 5 | 6 | 7 | PR |
+|---|---|---|---|---|---|---|---|---|
+| D-01 | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | ✓ | #4 |
+| PBI-06 | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | ✓ | #4 |
+| PBI-07 | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | ✓ | #4 |
+| D-02 | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | ✓ | #4 |
+| D-05 | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | ✓ | #4 |
+| D-06 | ✓ | — | ✓ | ✓ | ✓ | ✗ | ✓ | #8 |
+| D-07 | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | ✓ | #8 |
+| D-08 | ✓ | — | ✓ | ✓ | ✓ | ✗ | ✓ | #10 |
+| D-09 | ✓ | — | ✓ | ✓ | ✓ | ✗ | ✓ | #10 |
+
+**Condición 6 (revisión) no se cumple en ningún ítem:** ningún PR tiene revisiones registradas en GitHub y la rama no exige aprobación. Se declara como pendiente (R-07) en vez de darla por cumplida. **Condición 2:** D-06 (atajo de teclado), D-08 y D-09 (scripts) no tienen prueba automatizada propia; se verificaron con el build, el linter y la ejecución completa de `ejecutar_pruebas.sh`.
 
 ## 6. Atributos de calidad medidos
 
@@ -73,7 +86,7 @@ Un ítem está terminado cuando cumple todo:
 | RNF-REN-01 | Ventas contra el local (`MODO=edge`) con la nube detenida, concurrencia 5, 3 corridas | p95 ≤ 2 s | `benchmark-ventas.mjs` contra `docker-compose.demo.yml` | p95 medio 224 ms ± 102, peor 366 ms (3×20 ventas; el informe confirma «modo edge, nube SIN_CONEXION») |
 | RNF-REN-01 | Mismo benchmark en `ejecutar_pruebas.sh` (modo local) | p95 ≤ 2 s | Script de verificación | Ver `resumen_pruebas.txt` |
 | RNF-REN-02 / RNF-CON-01 | Ventas durante un corte; reconexión; reenvío del mismo lote | 100 % en la nube, 0 duplicados | `sync-nube.e2e-spec.ts` (20 ventas) y `humo-demo.sh` (contenedores reales) | 20/20 y 5/5, 0 duplicados |
-| RNF-SEC-02 | Archivos versionados (o copia sin git) | 0 hallazgos | `escanear-secretos.sh` | 0 hallazgos; el historial conserva un certificado de pruebas, sin validez tributaria (R-01, aceptado) |
+| RNF-SEC-02 | Repositorio y su historial (medida comprometida en la Semana 6) | 0 hallazgos | `escanear-secretos.sh` | Versión actual: 0 hallazgos. Historial: 2 archivos (`mi_certificado.p12`, `CAF_Prueba.xml`). **No cumple la medida original**; riesgo aceptado con DEC-08 (R-01) |
 
 **Limitación declarada:** no se ejecutó un ensayo continuo de 30 minutos de corte; la prueba de corte usa desconexión simulada (integración) y detención real del contenedor de la nube (humo), sin duración prolongada.
 
@@ -85,6 +98,11 @@ Un ítem está terminado cuando cumple todo:
 | D-02 | El local informaba "EN_LINEA" con la nube caída si la cola estaba vacía | Sin envíos no se contactaba la nube | Con cola vacía se consulta `/health` de la nube | `sync-nube.e2e-spec.ts` ("con la cola vacía y la nube caída…") |
 | D-03 | `ejecutar_pruebas.sh` probaba un servidor viejo que quedaba vivo en el puerto | Se mataba el subshell, no el proceso | `exec` y liberación de puertos | Ejecución del script |
 | D-04 | Falsos positivos del escaneo (código que arma valores) | Patrones demasiado amplios | Patrones exigen un valor literal | Escaneo con un `.env` de prueba |
+| D-05 | En el CI, `incremento2` corría antes que `productores` y fallaban 5 pruebas | La suite dejaba lotes con saldo y FEFO tomaba otro lote | La suite deja sin saldo sus lotes al terminar (`c1d5a2e`, posterior al tag `v2.0-rc1`) | Integración completa en verde en el CI |
+| D-06 | En el POS, F3 cobraba con el medio de pago, documento o cliente anteriores si se cambiaban después del carrito | El atajo capturaba la función de cobro de cuando cambió el carrito | F3 llama siempre a la versión vigente y no cobra dos veces mientras procesa (PR #8) | Sin prueba automatizada; build y linter sin el aviso `exhaustive-deps` |
+| D-07 | En `MODO=edge`, una venta hecha sin folios quedaba sin folio para siempre, y 50 de ellas al inicio de la cola impedían enviar todas las siguientes | Solo el modo `local` reintentaba el folio; el lote se cortaba al no encontrar ventas enviables | Cada pasada reintenta folio y DTE y salta las ventas que siguen sin folio; folio y venta se guardan en una transacción (PR #8) | `sync-nube.e2e-spec.ts` (falla sin la corrección: 0 enviadas en vez de 1) |
+| D-08 | En Windows, `ejecutar_pruebas.sh` y los scripts de `scripts/` fallaban (`$'\r': command not found`) | Git los descargaba con saltos de línea CRLF | `.gitattributes` fija LF para `*.sh` | `ejecutar_pruebas.sh` ejecutado completo en Windows (Git Bash) |
+| D-09 | Con un `.env` copiado de `.env.example`, `ejecutar_pruebas.sh` fallaba en Playwright (18 de 19) y en el benchmark | El backend de prueba heredaba `CORS_ORIGIN` del `.env` del desarrollador y el navegador bloqueaba las llamadas desde el puerto 4199; en el CI no hay `.env` | El script fija `CORS_ORIGIN` del backend de prueba | `ejecutar_pruebas.sh` en verde con el `.env` del README |
 
 ## 8. Cierre de spikes
 
@@ -93,6 +111,7 @@ Un ítem está terminado cuando cumple todo:
 - **Resultado:** se adoptaron rutas en `.env` (`SII_CAF_PATH`, `SII_P12_PATH`, `SII_P12_PASSWORD`). El firmado funciona con material real y con material sintético (pruebas y demo). El escaneo da 0 hallazgos en la versión actual.
 - **Decisión (DEC-06):** confirma ADR-03.
 - **R-01 (riesgo aceptado):** el historial conserva un certificado **de pruebas** del SII y su contraseña. No permite emitir documentos tributarios reales, por lo que no se reescribe el historial (obligaría a todos a reclonar y cambiaría los hashes de la versión candidata). Mitigación: la versión actual no contiene secretos (escaneo con 0 hallazgos), las pruebas usan certificados sintéticos y el certificado real de producción nunca se versiona (`.gitignore` y escaneo en CI). Cierre: limpiar el historial antes de publicar el repositorio o de usar un certificado real.
+- **Actualización (DEC-08, modifica ADR-03):** el repositorio ya es público, así que la condición de cierre anterior se cumplió y el certificado de pruebas y su contraseña son descargables desde el historial. ADR-03 comprometía rotar la contraseña y reescribir el historial; se decide no reescribirlo (cambiaría los hashes de la candidata y de los PR citados) y dar el certificado expuesto por comprometido: no se vuelve a usar, y cualquier certificado nuevo se carga solo por `.env`. Revisar si se obtiene un certificado real o el equipo decide limpiar el historial.
 
 **SPIKE-03 — outbox idempotente.**
 - **Alternativas:** orden por marca de tiempo vs secuencia local con la hora como dato informativo.
@@ -108,7 +127,9 @@ Un ítem está terminado cuando cumple todo:
 
 | ID | Tipo | Estado |
 |---|---|---|
-| R-01 | Seguridad | Certificado de pruebas del SII y su contraseña en el historial de git. **Aceptado:** sin validez tributaria; la versión actual no tiene secretos. Se limpia el historial antes de usar un certificado real o publicar el repo |
+| R-01 | Seguridad | Certificado de pruebas del SII y su contraseña en el historial de git de un repositorio **público**. **Aceptado con DEC-08 (nivel medio):** sin validez tributaria; la versión actual no tiene secretos; el certificado expuesto se da por comprometido y no se vuelve a usar |
 | R-02 | Producto | H-01 y H-02 no validadas: falta medición en el local piloto y entrevistas |
 | R-03 | Técnico | Un solo local por PYME; conflictos entre locales fuera de alcance (PBI-09) |
 | R-04 | Legal | SII simulado; certificación en el ambiente de pruebas del SII pendiente |
+| R-07 | Proceso | Revisión por pares sin registro: los PR #1 a #9 no tienen revisiones en GitHub y la rama no exige aprobación (la regla de la retrospectiva no se configuró). Los PR #8 y #9 se integraron sin revisión |
+| R-08 | Versión | El tag `v2.0-rc1` (`25e2f36`) no incluye D-05 ni las correcciones posteriores; la candidata vigente es `v2.0-rc2` |
