@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { pantallaDe, seccionesPara, SECCIONES } from '@/navegacion'
-import { accionesPara, frasesDelDia, morosos, saludo } from './inicio'
+import { accionesPara, contarVencimientos, frasesDelDia, morosos, saludo } from './inicio'
 
 const rutas = (rol: string) => seccionesPara(rol).flatMap((s) => s.pantallas.map((p) => p.to))
 
@@ -76,9 +76,18 @@ describe('inicio', () => {
     ])
   })
 
-  it('avisa lotes por vencer con enlace a la pantalla de lotes', () => {
-    const f = frasesDelDia({ kpis: null, caja: undefined, alertas: 0, lotesPorVencer: 2 })
-    expect(f).toEqual([{ texto: '2 lotes vencen en los próximos 30 días o ya vencieron.', tono: 'alerta', to: '/lotes', accion: 'Ver lotes' }])
+  it('avisa con ícono y texto los insumos próximos a vencer y los vencidos (AC-05)', () => {
+    const v = contarVencimientos([{ estadoVencimiento: 'PROXIMO_A_VENCER' }, { estadoVencimiento: 'PROXIMO_A_VENCER' }, { estadoVencimiento: 'VENCIDO' }, { estadoVencimiento: 'SIN_DATO' }, { estadoVencimiento: 'OK' }])
+    expect(v).toEqual({ proximos: 2, vencidos: 1 })
+    expect(frasesDelDia({ kpis: null, caja: undefined, alertas: 0, vencimientos: { ...v, umbral: 3 } }).map((f) => f.texto)).toEqual([
+      '⚠ 2 insumos están próximos a vencer (3 días o menos).',
+      '⛔ 1 lote ya venció: retíralo de la venta.',
+    ])
+  })
+
+  it('"Sin dato" no genera alerta en Inicio (AC-06)', () => {
+    const v = contarVencimientos([{ estadoVencimiento: 'SIN_DATO' }])
+    expect(frasesDelDia({ kpis: null, caja: undefined, alertas: 0, vencimientos: { ...v, umbral: 3 } })).toEqual([])
   })
 
   it('los módulos apagados desaparecen del menú y del inicio; las pantallas base siempre están', () => {

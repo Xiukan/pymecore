@@ -22,6 +22,16 @@ export default async function globalSetup() {
   execSync('pnpm exec prisma migrate deploy', opciones)
   execSync('pnpm exec ts-node -r tsconfig-paths/register prisma/seed.ts', opciones)
 
+  // Base separada que hace de nube en la prueba de sincronización (AC-SYNC-01).
+  const urlNube = url.replace(/\/([^/?]+)(\?|$)/, `/$1_nube$2`)
+  const admin = new Client({ connectionString: url })
+  await admin.connect()
+  await admin.query(`DROP DATABASE IF EXISTS "${nombre}_nube" WITH (FORCE)`)
+  await admin.query(`CREATE DATABASE "${nombre}_nube"`)
+  await admin.end()
+  execSync('pnpm exec prisma migrate deploy', { ...opciones, env: { ...process.env, DATABASE_URL: urlNube } })
+  process.env.DATABASE_URL_NUBE = urlNube
+
   const datos = new Client({ connectionString: url })
   await datos.connect()
   await datos.query(readFileSync(`${__dirname}/../scripts/datos-e2e.sql`, 'utf8'))

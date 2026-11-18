@@ -17,6 +17,7 @@ import { reclamarFolio } from '../utils/folios.util';
 import { exigirPeriodoAbierto } from '../utils/periodos';
 import { LotesService } from '../lotes/lotes.service';
 import { preciosVigentes } from '../precios/precios';
+import { exigirLease } from '../lease/lease';
 import { TX_OPCIONES } from '../utils/transacciones';
 import { calcularDocumento, dec, peso, share, ZERO } from '../utils/money.util';
 import { CreateTransactionDto } from './dto/create-transaction.dto';
@@ -150,6 +151,7 @@ export class TransactionsService {
     const itemMap = new Map(items.map((i) => [i.id, i]));
     const empresa = await this.empresa.get();
     await exigirPeriodoAbierto(this.prisma, new Date());
+    if (dto.tipoTransaccion === TipoTransaccion.VENTA) await exigirLease(this.prisma);
 
     const transaccion = await this.prisma.$transaction(async (tx) => {
       // La reserva va primero: una segunda petición con la misma clave espera aquí y luego falla por unicidad.
@@ -200,6 +202,7 @@ export class TransactionsService {
           montoTotal,
           // Una venta queda pendiente de SII hasta que su DTE se envía; nunca nace sincronizada.
           sincronizacion: esVenta ? 'PENDIENTE' : 'SINCRONIZADO',
+          estadoDte: esVenta ? 'PENDIENTE_ENVIO_SII' : null,
           transaccionOrigenId: dto.transaccionOrigenId,
           sesionCajaId: mueveCaja ? sesionCajaId : null,
           tipoDevolucion: dto.tipoDevolucion,
@@ -210,6 +213,8 @@ export class TransactionsService {
         },
         include: { detalles: true },
       });
+      // La venta y su lugar en la cola de envío a la nube nacen en la misma transacción.
+      if (esVenta) await tx.outboxSync.create({ data: { ventaId: creada.id } });
       for (const l of lineas) {
         if (esVenta || dto.tipoTransaccion === TipoTransaccion.MERMA) {
           await LotesService.consumir(tx, dto.sucursalId, l.itemId, l.cantidad, { tipo: dto.tipoTransaccion, transaccionId: creada.id });

@@ -13,6 +13,12 @@ export class SyncController {
     return this.syncService.getPendientes(sucursalDe(req.user, sucursalId));
   }
 
+  @Get('estado')
+  @Roles('Administrador', 'Encargado', 'Vendedor')
+  estado() {
+    return this.syncService.estado();
+  }
+
   @Post('ejecutar')
   @Roles('Administrador', 'Encargado')
   ejecutar(@Request() req: any, @Query('sucursalId') sucursalId?: string) {

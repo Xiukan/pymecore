@@ -44,7 +44,10 @@ describe('conteo físico, sugerencia de compra, estado de cuenta, RCV, SII y mó
     await ctx.db.stockLocal.updateMany({ where: { sucursalId: CASA_MATRIZ, itemId: cafe }, data: { stockMinimo: 100 } })
     const s = (await get(`/stock/sugerencia-compra?sucursalId=${CASA_MATRIZ}&dias=30`).expect(200)).body
     const fila = s.find((x: any) => x.itemId === cafe)
-    expect(n(fila.sugerido)).toBeGreaterThanOrEqual(53)
+    // Lo que viene en órdenes abiertas de otras pruebas también se descuenta.
+    const esperado = Math.max(0, Math.ceil(n(fila.vendido30) + 100 - n(fila.stock) - n(fila.porRecibir)))
+    expect(n(fila.sugerido)).toBe(esperado)
+    expect(n(fila.sugerido)).toBeGreaterThan(0)
     await get(`/stock/sugerencia-compra?sucursalId=${CASA_MATRIZ}`, ctx.vendedor).expect(403)
   })
 

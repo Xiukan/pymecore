@@ -13,6 +13,7 @@ const ACCIONES: Accion[] = [
   { to: '/compras', titulo: 'Llegó mercadería', detalle: 'Registrar una compra' },
   { to: '/gastos', titulo: 'Anotar un gasto', detalle: 'Luz, arriendo, combustible...' },
   { to: '/inventario', titulo: '¿Qué me queda?', detalle: 'Ver productos y stock' },
+  { to: '/lotes', titulo: '¿Qué se vence?', detalle: 'Insumos próximos a vencer' },
   { to: '/cuentas', titulo: 'Me deben y debo', detalle: 'Fiados y facturas por pagar' },
   { to: '/reportes', titulo: '¿Cómo voy?', detalle: 'Ventas y ganancias' },
 ]
@@ -40,7 +41,7 @@ export function frasesDelDia(d: {
   kpis: { numVentas: number; resultado: number } | null
   caja: { montoApertura: string | number } | null | undefined
   alertas: number
-  lotesPorVencer?: number
+  vencimientos?: { proximos: number; vencidos: number; umbral: number }
   clientesMorosos?: { cantidad: number; monto: number }
 }): Frase[] {
   const frases: Frase[] = []
@@ -53,12 +54,19 @@ export function frasesDelDia(d: {
       to: '/inventario',
       accion: 'Ver cuáles',
     })
-  if (d.lotesPorVencer)
+  if (d.vencimientos?.proximos)
     frases.push({
-      texto: `${d.lotesPorVencer} lote${d.lotesPorVencer === 1 ? ' vence' : 's vencen'} en los próximos 30 días o ya venci${d.lotesPorVencer === 1 ? 'ó' : 'eron'}.`,
+      texto: `⚠ ${d.vencimientos.proximos} insumo${d.vencimientos.proximos === 1 ? ' está' : 's están'} próximo${d.vencimientos.proximos === 1 ? '' : 's'} a vencer (${d.vencimientos.umbral} días o menos).`,
       tono: 'alerta',
       to: '/lotes',
-      accion: 'Ver lotes',
+      accion: 'Ver cuáles',
+    })
+  if (d.vencimientos?.vencidos)
+    frases.push({
+      texto: `⛔ ${d.vencimientos.vencidos} lote${d.vencimientos.vencidos === 1 ? ' ya venció' : 's ya vencieron'}: retíralo${d.vencimientos.vencidos === 1 ? '' : 's'} de la venta.`,
+      tono: 'alerta',
+      to: '/lotes',
+      accion: 'Ver cuáles',
     })
   if (d.clientesMorosos?.cantidad)
     frases.push({
@@ -86,4 +94,12 @@ export function morosos(clientes: { documentos: { vencimiento: string; saldo: st
     monto += vencidos.reduce((s, d) => s + Number(d.saldo), 0)
   }
   return { cantidad, monto }
+}
+
+/** Cuántos lotes están a punto de vencer o ya vencidos (la alerta de Inicio). */
+export function contarVencimientos(alertas: { estadoVencimiento: string }[]) {
+  return {
+    proximos: alertas.filter((a) => a.estadoVencimiento === 'PROXIMO_A_VENCER').length,
+    vencidos: alertas.filter((a) => a.estadoVencimiento === 'VENCIDO').length,
+  }
 }

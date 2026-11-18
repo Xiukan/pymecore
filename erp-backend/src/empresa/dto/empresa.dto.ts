@@ -1,7 +1,9 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { ArrayMaxSize, IsArray, IsIn, IsInt, IsNumber, IsOptional, IsString, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
 
-export const MODULOS = ['contabilidad', 'pedidos', 'productores', 'campo', 'finanzas', 'despachos'];
+// Núcleo del Incremento 1 (siempre visible): vender, caja, inventario con vencimientos,
+// mermas, compras de insumos y sincronización. Lo demás se activa por empresa.
+export const MODULOS = ['ofertas', 'devoluciones', 'clientes', 'gastos', 'reportes', 'despachos', 'pedidos', 'contabilidad', 'finanzas', 'productores', 'campo'];
 
 const RUT = /^\d{1,2}\.?\d{3}\.?\d{3}-[\dkK]$/;
 
@@ -57,6 +59,13 @@ export class UpdateEmpresaDto {
   @IsIn(MODULOS, { each: true })
   @IsOptional()
   modulos?: string[];
+
+  @ApiPropertyOptional({ example: 3, description: 'Días antes del vencimiento para avisar "Próximo a vencer"' })
+  @IsInt()
+  @Min(0)
+  @Max(365)
+  @IsOptional()
+  diasAlertaVencimiento?: number;
 }
 
 export class CreateUnidadDto {

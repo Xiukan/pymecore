@@ -15,6 +15,7 @@ type ModalProducto = {
   afectoIva: boolean
   humedadBasePct: string
   retencionIvaPct: string
+  diasAlertaVencimiento: string
   stockInicial: string
   stockMinimo: string
 }
@@ -86,6 +87,7 @@ export default function InventarioPage() {
       afectoIva: false,
       humedadBasePct: '',
       retencionIvaPct: '',
+      diasAlertaVencimiento: '',
       stockInicial: '0',
       stockMinimo: '0',
     })
@@ -93,7 +95,7 @@ export default function InventarioPage() {
 
   const guardarProducto = async () => {
     if (!modalProducto || !sucursalId) return
-    const { codigoSku, nombre, unidadMedida, precioVenta, costoPromedio, afectoIva, humedadBasePct, retencionIvaPct, stockInicial, stockMinimo } = modalProducto
+    const { codigoSku, nombre, unidadMedida, precioVenta, costoPromedio, afectoIva, humedadBasePct, retencionIvaPct, diasAlertaVencimiento, stockInicial, stockMinimo } = modalProducto
     if (!codigoSku.trim() || !nombre.trim() || !precioVenta) {
       setError('SKU, nombre y precio son obligatorios')
       return
@@ -110,6 +112,7 @@ export default function InventarioPage() {
         afectoIva,
         humedadBasePct: humedadBasePct ? parseFloat(humedadBasePct) : undefined,
         retencionIvaPct: retencionIvaPct ? parseFloat(retencionIvaPct) : undefined,
+        diasAlertaVencimiento: diasAlertaVencimiento ? parseInt(diasAlertaVencimiento, 10) : undefined,
       })
       await createStock({
         sucursalId,
@@ -327,6 +330,11 @@ export default function InventarioPage() {
                 />
                 <label htmlFor="afectoIva" className="text-sm text-gray-700">Afecto a IVA ({empresa ? Number(empresa.tasaIva) : '…'}%)</label>
               </div>
+
+              <label className="block text-sm text-gray-600">Avisar "Próximo a vencer" con (días)
+                <input inputMode="numeric" value={modalProducto.diasAlertaVencimiento} onChange={(e) => setModalProducto({ ...modalProducto, diasAlertaVencimiento: e.target.value.replace(/\D/g, '') })}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2" placeholder={`Vacío = el de la empresa (${empresa?.diasAlertaVencimiento ?? 3})`} />
+              </label>
 
               <details className="text-sm">
                 <summary className="cursor-pointer text-gray-600">Opciones agrícolas (si lo compras a productores)</summary>

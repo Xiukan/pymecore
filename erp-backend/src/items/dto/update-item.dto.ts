@@ -1,4 +1,4 @@
-import { IsBoolean, IsEnum, IsNumber, IsOptional, IsString, Max, Min } from 'class-validator';
+import { IsInt, IsBoolean, IsEnum, IsNumber, IsOptional, IsString, Max, Min } from 'class-validator';
 import { EstadoGeneral } from '@prisma/client';
 
 export class UpdateItemDto {
@@ -37,6 +37,13 @@ export class UpdateItemDto {
   @Max(99)
   @IsOptional()
   humedadBasePct?: number;
+
+  /** Días antes del vencimiento para avisar "Próximo a vencer"; null = usar el de la empresa. */
+  @IsInt()
+  @Min(0)
+  @Max(365)
+  @IsOptional()
+  diasAlertaVencimiento?: number | null;
 
   @IsNumber()
   @Min(0)

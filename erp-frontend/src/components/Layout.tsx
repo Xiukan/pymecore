@@ -1,20 +1,12 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
 import { useOnlineStatus } from '@/hooks/useOnlineStatus'
 import { useSyncPendientes } from '@/hooks/useSyncPendientes'
 import { useEmpresa } from '@/hooks/useEmpresa'
+import { getEstadoSync, type EstadoSync } from '@/api'
+import { textoEstadoSync } from '@/utils/sync'
 import { pantallaDe, seccionesPara } from '@/navegacion'
-
-function forzarOffline() {
-  Object.defineProperty(navigator, 'onLine', { get: () => false, configurable: true })
-  window.dispatchEvent(new Event('offline'))
-}
-
-function forzarOnline() {
-  Object.defineProperty(navigator, 'onLine', { get: () => true, configurable: true })
-  window.dispatchEvent(new Event('online'))
-}
 
 const enlace = ({ isActive }: { isActive: boolean }) =>
   `block px-3 py-2.5 rounded-lg text-[15px] font-medium transition-colors ${
@@ -51,7 +43,15 @@ export default function Layout() {
   const { user, signOut } = useAuth()
   const navigate = useNavigate()
   const online = useOnlineStatus()
-  const { pendientes, sincronizando, sincronizar } = useSyncPendientes(user?.sucursalId ?? undefined)
+  const { sincronizando, sincronizar } = useSyncPendientes(user?.sucursalId ?? undefined)
+  const [estadoSync, setEstadoSync] = useState<EstadoSync | null>(null)
+  useEffect(() => {
+    const leer = () => getEstadoSync().then((r) => setEstadoSync(r.data)).catch(() => {})
+    leer()
+    const t = setInterval(leer, 20_000)
+    return () => clearInterval(t)
+  }, [sincronizando])
+  const sync = textoEstadoSync(estadoSync, online)
   const [menuAbierto, setMenuAbierto] = useState(false)
   const { pathname } = useLocation()
 
@@ -107,39 +107,19 @@ export default function Layout() {
         </nav>
 
         <div className="px-4 py-4 border-t border-gray-200 space-y-2">
-          <div className="flex items-center gap-1.5">
-            <span className={`w-2.5 h-2.5 rounded-full ${online ? 'bg-green-500' : 'bg-red-500'}`} />
-            <span className={`text-sm font-medium ${online ? 'text-green-700' : 'text-red-700'}`}>
-              {online ? 'Conectado a internet' : 'Sin internet: puedes seguir vendiendo'}
-            </span>
+          <div className="flex items-center gap-1.5" role="status">
+            <span aria-hidden="true">{sync.enLinea ? '●' : '○'}</span>
+            <span className={`text-sm font-medium ${sync.enLinea ? 'text-green-700' : 'text-red-700'}`}>{sync.conexion}</span>
           </div>
-          {pendientes > 0 && (
+          {sync.pendientes && (
             <button
               onClick={sincronizar}
-              disabled={sincronizando || !online}
+              disabled={sincronizando}
               className="flex items-center gap-1.5 text-sm text-amber-700 hover:text-amber-900 disabled:opacity-50 transition-colors"
             >
-              {sincronizando ? (
-                <span className="w-3 h-3 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
-              ) : (
-                <span className="w-2 h-2 rounded-full bg-amber-500" />
-              )}
-              {sincronizando
-                ? 'Enviando al SII...'
-                : `${pendientes} documento${pendientes > 1 ? 's' : ''} por enviar al SII`}
+              {sincronizando ? <span className="w-3 h-3 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" /> : <span aria-hidden="true">↻</span>}
+              {sincronizando ? 'Enviando...' : sync.pendientes}
             </button>
-          )}
-          {import.meta.env.DEV && (
-            <div className="flex gap-1 pt-1 border-t border-dashed border-gray-200">
-              <button
-                onClick={online ? forzarOffline : forzarOnline}
-                className={`flex-1 text-xs px-2 py-1 rounded font-medium transition-colors ${
-                  online ? 'bg-red-50 text-red-600 hover:bg-red-100' : 'bg-green-50 text-green-600 hover:bg-green-100'
-                }`}
-              >
-                {online ? 'Simular offline' : 'Simular online'}
-              </button>
-            </div>
           )}
           <button onClick={handleSignOut} className="text-sm text-gray-500 hover:text-red-600 transition-colors">
             Salir
@@ -148,6 +128,10 @@ export default function Layout() {
       </aside>
 
       <main className="flex-1 min-w-0 overflow-y-auto p-4 pt-18 lg:p-6">
+        {sync.licencia && (
+          <div role="alert" className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-red-900">⛔ No se puede vender: {sync.licencia}</div>
+        )}
+        {sync.gracia && <div role="status" className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-900">⚠ {sync.gracia}</div>}
         <Ayuda key={pathname} pathname={pathname} />
         <Outlet />
       </main>

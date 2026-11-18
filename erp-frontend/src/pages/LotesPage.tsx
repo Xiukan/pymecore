@@ -1,5 +1,19 @@
 import { useEffect, useState } from 'react'
-import { getLotes, getTrazabilidadLote } from '@/api'
+import {
+  cambiarAvisoProducto,
+  darDeBajaLote,
+  getAlertasVencimiento,
+  getLotes,
+  getReporteMermas,
+  getSucursales,
+  getTrazabilidadLote,
+  registrarLote,
+  type AlertaVencimiento,
+  type ReporteMermas,
+} from '@/api'
+import { clp } from '@/utils/formato'
+import { useAuth } from '@/context/AuthContext'
+import { etiquetaVencimiento } from '@/utils/vencimiento'
 import type { Lote, TrazabilidadLote } from '@/types'
 import { mensajeError } from '@/utils/contabilidad'
 import { diasParaVencer } from '@/utils/productores'
@@ -13,6 +27,8 @@ const TIPOS: Record<string, string> = {
   RECEPCION_GUIA: 'Llegó desde otro local',
   ANULACION_GUIA: 'Envío anulado',
   ANULACION: 'Recepción anulada',
+  BAJA_VENCIDO: 'Dado de baja: vencido',
+  BAJA_DANADO: 'Dado de baja: dañado',
 }
 
 function Vencimiento({ fecha }: { fecha: string | null }) {
@@ -24,6 +40,221 @@ function Vencimiento({ fecha }: { fecha: string | null }) {
 }
 
 export default function LotesPage() {
+  const { user } = useAuth()
+  const [vista, setVista] = useState<'vencimientos' | 'mermas' | 'lotes'>('vencimientos')
+  const pestanas = [['vencimientos', 'Vencimientos'], ...(user?.rol !== 'Vendedor' ? [['mermas', 'Pérdidas por vencimiento']] : []), ['lotes', 'Lotes y trazabilidad']] as [typeof vista, string][]
+  return (
+    <div className="space-y-4 max-w-6xl">
+      <div className="flex gap-1 border-b border-gray-200 overflow-x-auto">
+        {pestanas.map(([id, label]) => (
+          <button key={id} onClick={() => setVista(id)}
+            className={`px-4 py-2 text-sm font-medium -mb-px border-b-2 ${vista === id ? 'border-blue-600 text-blue-700' : 'border-transparent text-gray-500'}`}>
+            {label}
+          </button>
+        ))}
+      </div>
+      {vista === 'vencimientos' && <Vencimientos />}
+      {vista === 'mermas' && <Mermas />}
+      {vista === 'lotes' && <Lotes />}
+    </div>
+  )
+}
+
+function Vencimientos() {
+  const { user } = useAuth()
+  const [filas, setFilas] = useState<AlertaVencimiento[]>([])
+  const [filtro, setFiltro] = useState<'alertas' | 'todos'>('alertas')
+  const [registrar, setRegistrar] = useState<AlertaVencimiento | null>(null)
+  const [baja, setBaja] = useState<AlertaVencimiento | null>(null)
+  const [error, setError] = useState('')
+  const [aviso, setAviso] = useState('')
+  const cambiarAviso = async (f: AlertaVencimiento) => {
+    const v = prompt(`¿Con cuántos días de anticipación avisar que "${f.nombre}" está por vencer? Deja vacío para usar el de la empresa.`, String(f.umbralDias))
+    if (v === null) return
+    setError('')
+    try {
+      await cambiarAvisoProducto(f.productoId, v.trim() === '' ? null : Number(v))
+      setAviso(`Aviso de "${f.nombre}" actualizado.`)
+      cargar()
+    } catch (e) {
+      setError(mensajeError(e))
+    }
+  }
+  const cargar = () => getAlertasVencimiento().then((r) => setFilas(r.data)).catch((e) => setError(mensajeError(e)))
+  useEffect(() => { cargar() }, [])
+  const visibles = filas.filter((f) => filtro === 'todos' || f.estadoVencimiento !== 'OK')
+  const gestiona = user?.rol !== 'Vendedor'
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-xl font-semibold text-gray-900">Vencimientos</h1>
+        <select value={filtro} onChange={(e) => setFiltro(e.target.value as 'alertas' | 'todos')} className="border border-gray-300 rounded-lg px-3 py-2 text-sm">
+          <option value="alertas">Por vencer, vencidos y sin dato</option>
+          <option value="todos">Todo el inventario</option>
+        </select>
+      </div>
+      {error && <p className="text-sm text-red-600">{error}</p>}
+      {aviso && <p role="status" className="text-sm text-green-700">{aviso}</p>}
+      <ul className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
+        {visibles.map((f, i) => {
+          const e = etiquetaVencimiento(f.estadoVencimiento, f.diasRestantes)
+          return (
+            <li key={`${f.productoId}${f.loteId ?? i}`} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+              <div>
+                <p className="font-medium text-[15px]">{f.nombre}</p>
+                <p className="text-sm text-gray-500">
+                  {Number(f.cantidad).toLocaleString('es-CL')} {f.unidad.toLowerCase()} · {f.sucursal}
+                  {f.lote && <> · lote {f.lote}</>}
+                  {f.fechaVencimiento && <> · vence {f.fechaVencimiento.slice(0, 10)}</>}
+                  {' · '}aviso {f.umbralDias} día{f.umbralDias === 1 ? '' : 's'} antes
+                  {gestiona && <button onClick={() => cambiarAviso(f)} className="ml-2 text-blue-700 hover:underline">cambiar</button>}
+                </p>
+              </div>
+              <span className="flex items-center gap-3">
+                <span role="status" className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm font-medium ${e.clase}`}>
+                  <span aria-hidden="true">{e.icono}</span>{e.texto}
+                </span>
+                {gestiona && f.estadoVencimiento === 'SIN_DATO' && (
+                  <button onClick={() => setRegistrar(f)} className="text-sm text-blue-700 hover:underline">Registrar vencimiento</button>
+                )}
+                {gestiona && f.loteId && (f.estadoVencimiento === 'VENCIDO' || f.estadoVencimiento === 'PROXIMO_A_VENCER') && (
+                  <button onClick={() => setBaja(f)} className="text-sm text-red-700 hover:underline">Dar de baja</button>
+                )}
+              </span>
+            </li>
+          )
+        })}
+        {visibles.length === 0 && <li className="px-4 py-6 text-center text-gray-400">Nada por vencer.</li>}
+      </ul>
+      {registrar && <RegistrarVencimiento fila={registrar} onCerrar={() => setRegistrar(null)} onListo={() => { setRegistrar(null); cargar() }} />}
+      {baja && <DarDeBaja fila={baja} onCerrar={() => setBaja(null)} onListo={(t) => { setBaja(null); setAviso(t); cargar() }} />}
+    </div>
+  )
+}
+
+function DarDeBaja({ fila, onCerrar, onListo }: { fila: AlertaVencimiento; onCerrar: () => void; onListo: (texto: string) => void }) {
+  const vencido = fila.estadoVencimiento === 'VENCIDO'
+  const [cantidad, setCantidad] = useState(String(Number(fila.cantidad)))
+  const [observacion, setObservacion] = useState('')
+  const [error, setError] = useState('')
+  const guardar = async () => {
+    setError('')
+    try {
+      const { data } = await darDeBajaLote(fila.loteId!, { motivo: vencido ? 'VENCIDO' : 'DANADO', cantidad: Number(cantidad.replace(',', '.')), observacion: observacion || undefined })
+      onListo(`Lote ${data.codigo} dado de baja: ${Number(data.cantidad).toLocaleString('es-CL')} ${fila.unidad.toLowerCase()}, pérdida ${clp(data.valor)}.`)
+    } catch (e) {
+      setError(mensajeError(e))
+    }
+  }
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onCerrar}>
+      <div role="dialog" aria-label="Dar de baja" className="bg-white rounded-xl p-5 w-full max-w-md space-y-3 text-sm" onClick={(e) => e.stopPropagation()}>
+        <h2 className="text-lg font-semibold">Dar de baja: {fila.nombre} (lote {fila.lote})</h2>
+        <p className="text-gray-600">
+          {vencido ? 'El lote ya venció: se retira de la venta y se registra como pérdida.' : 'El lote aún no vence: solo se retira si está dañado.'}
+          {' '}Queda registrado en la contabilidad y en el recorrido del lote.
+        </p>
+        <label className="block text-gray-600">Cantidad
+          <input inputMode="decimal" value={cantidad} onChange={(e) => setCantidad(e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2" />
+        </label>
+        <label className="block text-gray-600">Observación (opcional)
+          <input value={observacion} onChange={(e) => setObservacion(e.target.value)} placeholder={vencido ? '' : 'Ej: saco roto'} className="w-full border border-gray-300 rounded-lg px-3 py-2" />
+        </label>
+        {error && <p className="text-red-600">{error}</p>}
+        <div className="flex justify-end gap-2">
+          <button onClick={onCerrar} className="px-4 py-2 rounded-lg border border-gray-300">Cancelar</button>
+          <button onClick={guardar} disabled={!(Number(cantidad.replace(',', '.')) > 0)} className="px-4 py-2 rounded-lg bg-red-600 text-white disabled:opacity-50">
+            Dar de baja ({vencido ? 'vencido' : 'dañado'})
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function Mermas() {
+  const anio = new Date().getFullYear()
+  const [desde, setDesde] = useState(`${anio}-01-01`)
+  const [hasta, setHasta] = useState(new Date().toISOString().slice(0, 10))
+  const [r, setR] = useState<ReporteMermas | null>(null)
+  const [error, setError] = useState('')
+  useEffect(() => { getReporteMermas({ desde, hasta }).then((x) => setR(x.data)).catch((e) => setError(mensajeError(e))) }, [desde, hasta])
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <h1 className="text-xl font-semibold text-gray-900">Pérdidas por vencimiento</h1>
+        <div className="flex gap-2 text-sm">
+          <label className="flex flex-col text-gray-600">Desde<input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} className="border border-gray-300 rounded-lg px-3 py-2" /></label>
+          <label className="flex flex-col text-gray-600">Hasta<input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} className="border border-gray-300 rounded-lg px-3 py-2" /></label>
+        </div>
+      </div>
+      {error && <p className="text-sm text-red-600">{error}</p>}
+      {r && (
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="rounded-xl bg-red-50 border border-red-200 p-4"><p className="text-sm text-red-800">⛔ Perdido por vencimiento</p><p className="text-2xl font-semibold text-red-900">{clp(r.perdido)}</p></div>
+            <div className="rounded-xl bg-green-50 border border-green-200 p-4"><p className="text-sm text-green-800">✓ Salvado gracias al aviso</p><p className="text-2xl font-semibold text-green-900">{clp(r.salvado)}</p><p className="text-xs text-green-800">Vendido en los días de aviso antes de vencer</p></div>
+            <div className="rounded-xl bg-white border border-gray-200 p-4"><p className="text-sm text-gray-600">Se perdió</p><p className="text-2xl font-semibold">{r.tasaPerdida === null ? 'Sin datos' : `${r.tasaPerdida} %`}</p><p className="text-xs text-gray-500">de lo que llegó a la ventana de aviso</p></div>
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 text-sm">
+            <section className="bg-white rounded-xl border border-gray-200 p-4">
+              <h2 className="font-semibold mb-2">Por mes</h2>
+              <table className="w-full"><thead className="text-xs text-gray-500 uppercase"><tr><th className="text-left py-1">Mes</th><th className="text-right">Perdido</th><th className="text-right">Salvado</th></tr></thead>
+                <tbody>{r.porMes.map((m) => <tr key={m.mes} className="border-t border-gray-100"><td className="py-1">{m.mes}</td><td className="text-right">{clp(m.perdido)}</td><td className="text-right">{clp(m.salvado)}</td></tr>)}</tbody></table>
+              {r.porMes.length === 0 && <p className="text-gray-400">Sin movimientos en el período.</p>}
+            </section>
+            <section className="bg-white rounded-xl border border-gray-200 p-4">
+              <h2 className="font-semibold mb-2">Por producto</h2>
+              <table className="w-full"><thead className="text-xs text-gray-500 uppercase"><tr><th className="text-left py-1">Producto</th><th className="text-right">Perdido</th><th className="text-right">Salvado</th></tr></thead>
+                <tbody>{r.porProducto.map((p) => <tr key={p.itemId} className="border-t border-gray-100"><td className="py-1">{p.nombre}</td><td className="text-right">{clp(p.perdido)} <span className="text-gray-400">({p.unidadesPerdidas})</span></td><td className="text-right">{clp(p.salvado)} <span className="text-gray-400">({p.unidadesSalvadas})</span></td></tr>)}</tbody></table>
+              {r.porProducto.length === 0 && <p className="text-gray-400">Sin movimientos en el período.</p>}
+            </section>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+function RegistrarVencimiento({ fila, onCerrar, onListo }: { fila: AlertaVencimiento; onCerrar: () => void; onListo: () => void }) {
+  const { user } = useAuth()
+  const [cantidad, setCantidad] = useState(String(Number(fila.cantidad)))
+  const [fecha, setFecha] = useState('')
+  const [error, setError] = useState('')
+  const [sucursalId, setSucursalId] = useState(user?.sucursalId ?? '')
+  useEffect(() => {
+    if (!user?.sucursalId) getSucursales().then((r) => setSucursalId(r.data.find((x) => x.nombre === fila.sucursal)?.id ?? r.data[0]?.id ?? ''))
+  }, [])
+  const guardar = async () => {
+    setError('')
+    try {
+      await registrarLote({ itemId: fila.productoId, sucursalId, cantidad: Number(cantidad.replace(',', '.')), fechaVencimiento: fecha })
+      onListo()
+    } catch (e) {
+      setError(mensajeError(e))
+    }
+  }
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onCerrar}>
+      <div className="bg-white rounded-xl p-5 w-full max-w-md space-y-3 text-sm" onClick={(e) => e.stopPropagation()}>
+        <h2 className="text-lg font-semibold">Registrar vencimiento: {fila.nombre}</h2>
+        <label className="block text-gray-600">Cantidad con esa fecha
+          <input inputMode="decimal" value={cantidad} onChange={(e) => setCantidad(e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2" />
+        </label>
+        <label className="block text-gray-600">Fecha de vencimiento
+          <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2" />
+        </label>
+        {error && <p className="text-red-600">{error}</p>}
+        <div className="flex justify-end gap-2">
+          <button onClick={onCerrar} className="px-4 py-2 rounded-lg border border-gray-300">Cancelar</button>
+          <button onClick={guardar} disabled={!fecha || !(Number(cantidad.replace(',', '.')) > 0)} className="px-4 py-2 rounded-lg bg-blue-600 text-white disabled:opacity-50">Guardar</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function Lotes() {
   const [lotes, setLotes] = useState<Lote[]>([])
   const [conSaldo, setConSaldo] = useState(true)
   const [busqueda, setBusqueda] = useState('')
@@ -35,9 +266,9 @@ export default function LotesPage() {
   const visibles = lotes.filter((l) => !q || l.codigo.toLowerCase().includes(q) || l.item.nombre.toLowerCase().includes(q))
 
   return (
-    <div className="space-y-4 max-w-6xl">
+    <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold text-gray-900">Lotes y vencimientos</h1>
+        <h2 className="text-lg font-semibold text-gray-900">Lotes y trazabilidad</h2>
         <div className="flex gap-3 items-center text-sm">
           <input placeholder="Buscar lote o producto" value={busqueda} onChange={(e) => setBusqueda(e.target.value)} className="border border-gray-300 rounded-lg px-3 py-2" />
           <label className="flex items-center gap-2"><input type="checkbox" checked={conSaldo} onChange={(e) => setConSaldo(e.target.checked)} /> Solo con saldo</label>
@@ -67,7 +298,7 @@ export default function LotesPage() {
                 <td className="px-3 py-2"><Vencimiento fecha={l.fechaVencimiento} /></td>
               </tr>
             ))}
-            {visibles.length === 0 && <tr><td colSpan={6} className="px-3 py-6 text-center text-gray-400">Sin lotes. Se crean al recibir producto de un productor.</td></tr>}
+            {visibles.length === 0 && <tr><td colSpan={6} className="px-3 py-6 text-center text-gray-400">Sin lotes. Se crean al recibir compras con fecha de vencimiento o al registrarla en Vencimientos.</td></tr>}
           </tbody>
         </table>
       </div>

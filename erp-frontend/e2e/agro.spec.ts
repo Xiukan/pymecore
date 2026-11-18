@@ -49,6 +49,7 @@ test.describe('PYMECORE agro', () => {
     const fila = page.locator('tr', { hasText: `Productor ${sufijo}` })
     await expect(fila).toContainText('1.000 kg')
     await page.goto('/lotes')
+    await page.getByRole('button', { name: 'Lotes y trazabilidad' }).click()
     await expect(page.locator('tr', { hasText: `Productor ${sufijo}` })).toContainText('RP-')
   })
 

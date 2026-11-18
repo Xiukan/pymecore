@@ -88,6 +88,8 @@ export interface Transaccion {
   observaciones: string | null
   motivoMerma: string | null
   sincronizacion: 'PENDIENTE' | 'ENVIANDO' | 'SINCRONIZADO' | 'ERROR'
+  estadoDte?: 'PENDIENTE_ENVIO_SII' | 'ACEPTADO' | 'RECHAZADO' | null
+  glosaSii?: string | null
   metadatosSii: Record<string, any> | null
   entidad?: Pick<Entidad, 'nombreRazonSocial' | 'rut'> | null
   detalles?: TransaccionDetalle[]
@@ -170,6 +172,7 @@ export interface Empresa {
   diasCambio: number
   rutConsumidorFinal: string
   modulos?: string[]
+  diasAlertaVencimiento?: number
   nombreConsumidorFinal: string
   topeGastoSinDocumento: number
   tasaRetencionHonorarios: string

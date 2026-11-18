@@ -246,8 +246,10 @@ export default function VentasPage() {
 
   const handleCobrar = async () => {
     if (!sucursalId || lineas.length === 0) return
-    if (pasoCliente === 'inicio') {
+    // Boleta sin cliente: producto → Cobrar → confirmar (AC-08). La factura exige identificar al receptor.
+    if (tipoDoc === 33 && !rutFinal) {
       setPasoCliente('buscar')
+      setMensaje({ tipo: 'err', texto: 'Para emitir factura, busca o registra al cliente por su RUT.' })
       return
     }
     const pagos = medioPago === 'Mixto' ? repartirPago(total, Number(efectivoMixto), otroMixto) : null
@@ -595,7 +597,7 @@ export default function VentasPage() {
             transition: 'all .2s', letterSpacing: 1, textTransform: 'uppercase',
           }}
         >
-          {loading ? 'Procesando...' : pasoCliente === 'inicio' && lineas.length > 0 ? '💳 Identificar cliente (F3)' : '💰 Cobrar (F3)'}
+          {loading ? 'Procesando...' : '💰 Cobrar (F3)'}
         </button>
 
         {lineas.length > 0 && (

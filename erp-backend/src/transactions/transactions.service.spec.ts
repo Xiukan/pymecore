@@ -55,6 +55,7 @@ describe('TransactionsService', () => {
       },
       transaccionDetalle: { groupBy: jest.fn().mockResolvedValue([]) },
       movimientoLote: { findMany: jest.fn().mockResolvedValue([]) },
+      outboxSync: { create: jest.fn() },
       // Responde según la consulta: caja abierta del cajero y folio libre.
       $queryRaw: jest.fn().mockImplementation((sql: TemplateStringsArray) => {
         const texto = sql.join('?')
