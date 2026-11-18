@@ -1,7 +1,7 @@
-import { test, expect } from '@playwright/test'
+import { test, expect, type Page } from '@playwright/test'
 
-// Caja: abrir con fondo, vender con distintos medios y cerrar con arqueo.
-test('apertura, ventas y cierre de caja con informe Z', async ({ page }) => {
+/** Entra como vendedor al POS con una caja recién abierta con $10.000 de fondo. */
+async function cajaNueva(page: Page) {
   await page.goto('/login')
   await page.getByLabel('Usuario').fill('vendedor1')
   await page.getByLabel('Contraseña').fill('vend1234')
@@ -22,6 +22,24 @@ test('apertura, ventas y cierre de caja con informe Z', async ({ page }) => {
   await page.getByPlaceholder('Fondo inicial').fill('10000')
   await page.getByRole('button', { name: 'Abrir caja' }).click()
   await expect(page.getByText('efectivo esperado $10.000')).toBeVisible()
+}
+
+// D-06: F3 debe cobrar con el medio de pago elegido después de armar el carrito.
+// Con el defecto, la venta se enviaba como Efectivo porque el atajo conservaba el estado anterior.
+test('F3 cobra con el medio de pago vigente (D-06)', async ({ page }) => {
+  await cajaNueva(page)
+  await page.getByText('Café Molido 250g').first().click()
+  await page.getByText('Tarjeta', { exact: true }).click()
+  await page.getByRole('button', { name: 'Sin RUT' }).click()
+  const venta = page.waitForRequest((r) => r.method() === 'POST' && /\/transactions$/.test(new URL(r.url()).pathname))
+  await page.keyboard.press('F3')
+  expect((await venta).postDataJSON().medioPago).toBe('Tarjeta')
+  await expect(page.getByText(/emitida/)).toBeVisible({ timeout: 15000 })
+})
+
+// Caja: abrir con fondo, vender con distintos medios y cerrar con arqueo.
+test('apertura, ventas y cierre de caja con informe Z', async ({ page }) => {
+  await cajaNueva(page)
 
   const cobrar = async (medio: string) => {
     await page.getByText('Café Molido 250g').first().click()

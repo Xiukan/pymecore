@@ -1,14 +1,14 @@
 RESUMEN DE PRUEBAS — PYMECORE
-Fecha: 2026-11-18 01:29  ·  Commit: 26ec60b
+Fecha: 2026-11-18 09:33  ·  Commit: 41a4d7c
 Node v24.18.0 · pnpm 11.10.0 · PostgreSQL 16 (Docker)
 
 Estado | Suite | Resultado | Duración
 PASA   | Escaneo de secretos (RNF-SEC-02) | RESULTADO: 0 hallazgo(s) en la versión actual | 0s
-PASA   | Backend unitarias (Jest) | Test Suites: 25 passed, 25 total Tests: 137 passed, 137 total | 10s
-PASA   | Backend integración (Jest + PostgreSQL) | Test Suites: 17 passed, 17 total Tests: 121 passed, 121 total | 62s
+PASA   | Backend unitarias (Jest) | Test Suites: 25 passed, 25 total Tests: 137 passed, 137 total | 7s
+PASA   | Backend integración (Jest + PostgreSQL) | Test Suites: 17 passed, 17 total Tests: 124 passed, 124 total | 57s
 PASA   | Frontend unitarias (Vitest) |  Test Files 14 passed (14)  Tests 43 passed (43) | 3s
-PASA   | Navegador (Playwright) |  24 passed (30.4s) | 32s
-PASA   | Rendimiento p95 de ventas (RNF-REN-01) | Benchmark ventas: 3×50 ventas (concurrencia 5, modo local, nube NO_CONFIGURADA) · p95 medio 149 ms ± 45 · peor p95 212 ms · meta ≤ 2000 ms → CUMPLE | 3s
+PASA   | Navegador (Playwright) |  25 passed (31.9s) | 33s
+PASA   | Rendimiento p95 de ventas (RNF-REN-01) | Benchmark ventas: 3×50 ventas (concurrencia 5, modo local, nube NO_CONFIGURADA) · p95 medio 113 ms ± 4 · peor p95 118 ms · meta ≤ 2000 ms → CUMPLE | 2s
 
 RESULTADO GLOBAL: TODAS LAS SUITES PASAN
 

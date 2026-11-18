@@ -1,4 +1,4 @@
-import { abrirCaja, auth, CASA_MATRIZ, cerrar, Contexto, iniciar } from './helpers'
+import { abrirCaja, auth, CASA_MATRIZ, cerrar, Contexto, iniciar, SUCURSAL_NORTE } from './helpers'
 
 // Incremento 2: baja de lotes vencidos (PBI-06), indicador perdido vs salvado (H-01) y
 // umbral de alerta por producto (PBI-07). AC-09 a AC-14.
@@ -92,6 +92,61 @@ describe('Incremento 2: mermas por vencimiento y umbral por producto', () => {
     expect([de(fertilizante).estadoVencimiento, de(fertilizante).umbralDias]).toEqual(['OK', 3])
     await ctx.http().patch(`/items/${semilla}`).set(auth(ctx.admin)).send({ diasAlertaVencimiento: null }).expect(200)
     expect((await alertas()).find((x) => x.productoId === semilla && x.loteId).umbralDias).toBe(3)
+  })
+
+  // Deja al producto con `unidades` de stock y sin lotes con saldo en la sucursal.
+  const soloStock = async (itemId: string, unidades: number, sucursalId = CASA_MATRIZ) => {
+    await ctx.db.lote.updateMany({ where: { sucursalId, itemId }, data: { cantidadActual: 0 } })
+    await ctx.db.stockLocal.upsert({
+      where: { sucursalId_itemId: { sucursalId, itemId } },
+      update: { stockActual: unidades },
+      create: { sucursalId, itemId, stockActual: unidades },
+    })
+  }
+
+  it('AC-15: una baja y una venta simultáneas del mismo lote consumen el saldo una sola vez', async () => {
+    for (let i = 0; i < 5; i++) {
+      await soloStock(semilla, 1)
+      const l = await lote(semilla, 1, 5)
+      const [baja, venta] = await Promise.all([
+        post(`/lotes/${l.id}/baja`, { motivo: 'DANADO' }),
+        post('/transactions', { sucursalId: CASA_MATRIZ, tipoTransaccion: 'VENTA', medioPago: 'Efectivo', detalles: [{ itemId: semilla, cantidad: 1 }] }),
+      ])
+      expect([baja.status, venta.status].sort()).toEqual([201, 400])
+      expect(Number((await ctx.db.lote.findUniqueOrThrow({ where: { id: l.id } })).cantidadActual)).toBe(0)
+      expect(await ctx.stock(semilla)).toBe(0)
+    }
+  })
+
+  it('AC-15: un lote que ya no tiene saldo no se da de baja', async () => {
+    await soloStock(semilla, 1)
+    const l = await lote(semilla, 1, -1)
+    await post(`/lotes/${l.id}/baja`, { motivo: 'VENCIDO' }).expect(201)
+    expect((await post(`/lotes/${l.id}/baja`, { motivo: 'VENCIDO' }).expect(400)).body.message).toMatch(/ya no tiene saldo/)
+  })
+
+  it('AC-16: el encargado da de baja y ve el reporte solo de su sucursal', async () => {
+    const usuario = `encargado-${Date.now()}`
+    await post('/usuarios', { username: usuario, password: 'encar1234', nombreCompleto: 'Encargado de prueba', rol: 'Encargado', sucursalId: CASA_MATRIZ }).expect(201)
+    const encargado = (await ctx.http().post('/auth/login').send({ username: usuario, password: 'encar1234' }).expect(201)).body.accessToken as string
+    const reporte = async (token: string, sucursalId: string) =>
+      (await ctx.http().get(`/lotes/mermas?desde=${hoy}&hasta=${hoy}&sucursalId=${sucursalId}`).set(auth(token)).expect(200)).body
+
+    await soloStock(semilla, 1)
+    const propio = await lote(semilla, 1, -1)
+    await post(`/lotes/${propio.id}/baja`, { motivo: 'VENCIDO' }, encargado).expect(201)
+
+    await soloStock(semilla, 1, SUCURSAL_NORTE)
+    const ajeno = (await post('/lotes', { itemId: semilla, sucursalId: SUCURSAL_NORTE, cantidad: 1, fechaVencimiento: enDias(-1) }).expect(201)).body
+    await post(`/lotes/${ajeno.id}/baja`, { motivo: 'VENCIDO' }, encargado).expect(404)
+    expect(Number((await ctx.db.lote.findUniqueOrThrow({ where: { id: ajeno.id } })).cantidadActual)).toBe(1)
+
+    // Aunque pida otra sucursal, el encargado recibe el reporte de la suya.
+    const pedidoAjeno = await reporte(encargado, SUCURSAL_NORTE)
+    expect(pedidoAjeno.perdido).toBe((await reporte(ctx.admin, CASA_MATRIZ)).perdido)
+    await post(`/lotes/${ajeno.id}/baja`, { motivo: 'VENCIDO' }).expect(201)
+    expect((await reporte(encargado, SUCURSAL_NORTE)).perdido).toBe(pedidoAjeno.perdido)
+    expect((await reporte(ctx.admin, SUCURSAL_NORTE)).perdido).toBeGreaterThan(0)
   })
 
   it('regresión: la contabilidad registra la baja como merma', async () => {
