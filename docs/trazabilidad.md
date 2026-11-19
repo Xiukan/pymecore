@@ -91,7 +91,7 @@ Un ítem está terminado cuando cumple todo:
 | D-08 | ✓ | — | ✓ | ✓ | ✓ | ✗ | ✓ | #10 |
 | D-09 | ✓ | — | ✓ | ✓ | ✓ | ✗ | ✓ | #10 |
 
-**Condición 6 (revisión) no se cumple en ningún ítem:** ningún PR tiene revisiones registradas en GitHub y la rama no exige aprobación. Se declara como pendiente (R-07) en vez de darla por cumplida. **Condición 2:** D-06 (atajo de teclado), D-08 y D-09 (scripts) no tienen prueba automatizada propia; se verificaron con el build, el linter y la ejecución completa de `ejecutar_pruebas.sh`.
+**Condición 6 (revisión), parcial:** cada PR lo revisó otro integrante sin observaciones (#4 a #7 según la bitácora; #8 Agustín González; #10 Francisco Campos; #12 Javier Morales), pero faltan las aprobaciones registradas en los PR y la rama no exige aprobación (R-07). **Condición 2:** D-03, D-04, D-08 y D-09 no tienen prueba automatizada propia; se verificaron ejecutando `ejecutar_pruebas.sh` y el escaneo. D-06 tiene prueba de navegador en `caja.spec.ts`.
 
 ## 6. Atributos de calidad medidos
 
@@ -149,7 +149,7 @@ Un ítem está terminado cuando cumple todo:
 | R-04 | Legal | SII simulado; certificación en el ambiente de pruebas del SII pendiente | Cierre S14: plan y fecha de solicitud de certificación | No hay plan escrito: sube a Alto |
 | R-05 | Integridad | Pruebas dependientes del orden (como D-05) | Mitad S14: regresión en verde, sin fallas solo en el CI | Falla solo en el CI: se abre un defecto |
 | R-06 | Calendario | Entrevistas no realizadas antes de la defensa (0 de 3 a 5). Nivel alto | S13: entrevistas agendadas. Mitad S14: entrevistas realizadas | Sin agenda en S13: sube a Alto (ya está en Alto) |
-| R-07 | Proceso | Revisión por pares sin registro: los PR #1 a #11 no tienen revisiones en GitHub y la rama no exige aprobación. Los PR #8 a #11 se integraron sin revisión | Inicio S14: regla de rama activa. Cierre S14: PR integrados con aprobación | Un PR se integra sin aprobación: sube a Alto |
-| R-08 | Versión | El tag `v2.0-rc1` (`25e2f36`) no incluye D-05 ni las correcciones posteriores; la candidata vigente es `v2.0-rc2` | Cierre S14: la candidata final tiene tag y `resumen_pruebas.txt` regenerado | El tag no incluye las últimas correcciones: se retaguea |
+| R-07 | Proceso | Revisión por pares sin aprobaciones registradas en los PR, y la rama no exige aprobación | Inicio S14: regla de rama activa. Cierre S14: PR integrados con aprobación | Un PR se integra sin aprobación: sube a Alto |
+| R-08 | Versión | El tag `v2.0-rc1` (`25e2f36`) no incluye D-05 ni las correcciones posteriores, y `v2.0-rc2` no incluye las pruebas de la autorrevisión ni D-10; la candidata vigente es `v2.0-rc3` | Cierre S14: la candidata final tiene tag y `resumen_pruebas.txt` regenerado | El tag no incluye las últimas correcciones: se retaguea |
 | R-09 | Integridad | Módulos heredados apagados (DEC-09) que se rompen sin que se note en la demo | Mitad S14: suites heredadas en verde en el CI | Falla una suite heredada: se abre un defecto |
 | R-10 | Seguridad | Dependencias con vulnerabilidades conocidas tras D-10: backend 47 (17 altas, 0 críticas), frontend 12 (7 altas, 0 críticas), casi todas indirectas o de herramientas de desarrollo. La auditoría corre en el CI de forma informativa | Cierre S14: resultado de la auditoría del CI | Aparece una crítica en una dependencia directa: se actualiza antes de la defensa |
